@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.integrate import quad
-from quadrature import log_y_f, expectation
+from svgp.jax.quadrature import expectation
+from svgp.jax.likelihoods import bernoulli_probit_lik
 from functools import partial
 from jax import jit
 from jax.scipy.stats import norm
@@ -15,12 +16,12 @@ def test_quadrature_against_scipy():
     vars = np.random.randn(10)**2
     means = np.random.randn(10)
 
-    expectations = expectation(ys, vars, means)
+    expectations = expectation(ys, vars, means, bernoulli_probit_lik)
 
     @jit
     def to_quadrature(f, cur_y, cur_mean, cur_var):
 
-        log_prob = log_y_f(cur_y, f)
+        log_prob = bernoulli_probit_lik(cur_y, f)
         q = norm.pdf(f, cur_mean, jnp.sqrt(cur_var))
 
         return log_prob * q
