@@ -2,8 +2,7 @@ import numpy as np
 import tensorflow as tf
 from .quadrature import expectation
 from .kl import mvn_kl
-
-JITTER = 1e-6
+from .config import DTYPE, JITTER
 
 
 def project_to_f(kmm, knm, knn, m, L):
@@ -13,7 +12,7 @@ def project_to_f(kmm, knm, knn, m, L):
     mean = tf.matmul(knm, tf.linalg.solve(kmm, m))
 
     S = tf.matmul(L, tf.transpose(L)) + \
-        tf.eye(int(L.shape[0]), dtype=tf.float64) * JITTER
+        tf.eye(int(L.shape[0]), dtype=DTYPE) * JITTER
 
     V1 = tf.linalg.solve(kmm, S - kmm)
     V2 = tf.linalg.solve(kmm, tf.transpose(knm))
@@ -52,7 +51,7 @@ def compute_kl_term(m, L, Z, kern_fn):
     p_u_mean = tf.zeros_like(m)
     p_u_cov = kern_fn(Z, Z)
     q_u_cov = tf.matmul(L, tf.transpose(L)) + \
-        tf.eye(int(L.shape[0]), dtype=tf.float64) * JITTER
+        tf.eye(int(L.shape[0]), dtype=DTYPE) * JITTER
     q_u_mean = m
 
     kl = mvn_kl(q_u_mean, q_u_cov, p_u_mean, p_u_cov)

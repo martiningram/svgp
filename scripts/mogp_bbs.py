@@ -10,6 +10,7 @@ from functools import partial
 from ml_tools.tf_kernels import ard_rbf_kernel
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
+from svgp.tf.config import DTYPE
 
 
 def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
@@ -57,26 +58,30 @@ cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
 # Choose a subset of birds to start with before I work out memory fix
-bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
+bird_subset = np.random.choice(out_df.columns, size=128, replace=False)
+bird_subset[0] = 'Willet'
+# bird_subset = out_df.columns
 out_df = out_df[bird_subset]
 
-site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
-cov_df = cov_df.iloc[site_subset]
-out_df = out_df.iloc[site_subset]
+assert 'Willet' in bird_subset
+
+# site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
+# cov_df = cov_df.iloc[site_subset]
+# out_df = out_df.iloc[site_subset]
 
 scaler = StandardScaler()
 
 x = scaler.fit_transform(cov_df.values)
 y = out_df.values
 
-n_inducing = 20
-n_latent = 4
+n_inducing = 50
+n_latent = 8
 n_cov = int(x.shape[1])
 
 start_z = find_starting_z(x, n_inducing)
 
-x = tf.constant(x, dtype=tf.float64)
-y = tf.constant(y, dtype=tf.float64)
+x = tf.constant(x, dtype=DTYPE)
+y = tf.constant(y, dtype=DTYPE)
 
 n_out = int(y.shape[1])
 
@@ -88,10 +93,10 @@ start_theta = np.concatenate([
     np.random.uniform(1, 3, size=(n_cov + 1)*n_latent),  # kernel params
 ])
 
-start_theta_tensor = tf.Variable(start_theta, dtype=tf.float64)
+start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
 
-w_prior_mean = tf.constant(0., dtype=tf.float64)
-w_prior_var = tf.constant(1., dtype=tf.float64)
+w_prior_mean = tf.constant(0., dtype=DTYPE)
+w_prior_var = tf.constant(1., dtype=DTYPE)
 
 
 def to_minimize(theta):
@@ -107,7 +112,7 @@ def to_minimize(theta):
 
 def to_minimize_with_grad(theta):
 
-    theta_tensor = tf.Variable(theta, dtype=tf.float64)
+    theta_tensor = tf.Variable(theta, dtype=DTYPE)
 
     with tf.GradientTape() as tape:
 
@@ -132,4 +137,5 @@ ms, Ls, w_means, w_vars, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out)
 
 np.savez('final_params_split', ms=ms, Ls=Ls, w_means=w_means, w_vars=w_vars,
-         kern_params=kern_params, n_inducing=n_inducing, n_latent=n_latent)
+         kern_params=kern_params, n_inducing=n_inducing, n_latent=n_latent,
+         birds=bird_subset)

@@ -1,8 +1,9 @@
 import numpy as np
 import tensorflow as tf
-from svgp.tf.quadrature import expectation
+from svgp.tf.quadrature import expectation, expectation_custom
 from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term
 from svgp.tf.kl import normal_kl_1d
+from .config import DTYPE
 
 
 def create_ls(elements, n_inducing, n_latent):
@@ -58,6 +59,12 @@ def compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks, log_lik_fun,
     m_proj, cov_proj = project_latents(x, Z, ms, Ls, ks)
     m_out, var_out = calculate_approximate_means_and_vars(
         m_proj, cov_proj, w_means, tf.sqrt(w_vars))
+
+    # curried_exp = lambda inputs: expectation_custom(*inputs,
+    #                                                 log_y_f=log_lik_fun)
+
+    # log_liks = tf.map_fn(curried_exp, [tf.transpose(y), tf.transpose(var_out),
+    #                                    tf.transpose(m_out)], dtype=DTYPE)
 
     log_liks = expectation(tf.reshape(y, (-1,)), tf.reshape(var_out, (-1,)),
                            tf.reshape(m_out, (-1,)), log_lik_fun)

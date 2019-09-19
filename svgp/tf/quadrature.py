@@ -1,15 +1,16 @@
 import numpy as np
 import tensorflow as tf
+from .config import N_QUAD, DTYPE
 
 
-x_quad, w_quad = np.polynomial.hermite.hermgauss(100)
-x_quad_tf = tf.constant(x_quad, dtype=tf.float64)
-w_quad_tf = tf.constant(w_quad, dtype=tf.float64)
+x_quad, w_quad = np.polynomial.hermite.hermgauss(N_QUAD)
+x_quad_tf = tf.constant(x_quad, dtype=DTYPE)
+w_quad_tf = tf.constant(w_quad, dtype=DTYPE)
 
 
 def transform_x(x, sigma, mu):
 
-    return tf.sqrt(tf.constant(2., dtype=tf.float64)) * sigma * x + mu
+    return tf.sqrt(tf.constant(2., dtype=DTYPE)) * sigma * x + mu
 
 
 def expectation(ys, vars, means, log_y_f):
@@ -34,7 +35,7 @@ def expectation(ys, vars, means, log_y_f):
 
     reduced = tf.reduce_sum(multiplied, axis=0)
 
-    return reduced / tf.sqrt(tf.constant(np.pi, dtype=tf.float64))
+    return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))
 
 
 @tf.custom_gradient
@@ -61,7 +62,7 @@ def expectation_custom(ys, vars, means, log_y_f):
         second_grad = g.gradient(grad, x_to_eval)
 
         grad_mean = tf.reduce_sum(w_col * grad, axis=0)
-        grad_var = 0.5 * tf.reduce_sum(w_col * grad, axis=0)
+        grad_var = 0.5 * tf.reduce_sum(w_col * second_grad, axis=0)
 
         return None, grad_var, grad_mean
 

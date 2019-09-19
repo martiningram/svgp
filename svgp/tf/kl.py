@@ -1,4 +1,5 @@
 import tensorflow as tf
+from .config import DTYPE
 
 
 def mvn_kl(mu_0, sigma_0, mu_1, sigma_1):
@@ -25,6 +26,6 @@ def normal_kl_1d(mu1, var1, mu2, var2):
 
     main_term = (var1 + (mu1 - mu2)**2) / (2 * var2)
 
-    const_term = tf.constant(-0.5, dtype=tf.float64)
+    const_term = tf.constant(-0.5, dtype=DTYPE)
 
     return log_term + main_term + const_term
