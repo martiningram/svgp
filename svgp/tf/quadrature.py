@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from .config import N_QUAD, DTYPE
+import gc
 
 
 x_quad, w_quad = np.polynomial.hermite.hermgauss(N_QUAD)
@@ -59,6 +60,9 @@ def expectation_map(ys, vars, means, log_y_f):
 
         x_to_eval = transform_x(x, tf.sqrt(vars), means)
         multiplied = w * log_y_f(ys, x_to_eval)
+
+        gc.collect()
+
         return tf.reduce_sum(multiplied)
 
     multiplied = tf.map_fn(to_map, (x_quad_tf, w_quad_tf), dtype=DTYPE)
