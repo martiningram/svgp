@@ -66,9 +66,16 @@ def compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks, log_lik_fun,
     # log_liks = tf.map_fn(curried_exp, [tf.transpose(y), tf.transpose(var_out),
     #                                    tf.transpose(m_out)], dtype=DTYPE)
 
-    log_liks = expectation_map(
-        tf.reshape(y, (-1,)), tf.reshape(var_out, (-1,)),
-        tf.reshape(m_out, (-1,)), log_lik_fun)
+    curried_exp = lambda inputs: expectation_map(
+        *inputs, log_y_f=log_lik_fun)
+
+    log_liks = tf.map_fn(curried_exp, [tf.transpose(y), tf.transpose(var_out),
+                                       tf.transpose(m_out)], dtype=DTYPE)
+
+
+    # log_liks = expectation_map(
+    #     tf.reshape(y, (-1,)), tf.reshape(var_out, (-1,)),
+    #     tf.reshape(m_out, (-1,)), log_lik_fun)
 
     total_log_lik = tf.reduce_sum(log_liks)
 

@@ -122,7 +122,7 @@ def to_minimize_with_grad(theta):
 
     result_grad = tape.gradient(result, theta_tensor)
 
-    print(result)
+    print(result, flush=True)
 
     return result, result_grad
 
