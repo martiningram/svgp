@@ -134,8 +134,8 @@ final_params = result.x
 
 np.savez('final_params', final_params)
 
-ms, Ls, w_means, w_vars, kern_params = extract_parameters(
-    final_params, n_inducing, n_latent, n_out)
+ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
+    final_params, n_inducing, n_latent, n_out, n_cov)
 
 np.savez('final_params_split', ms=ms, Ls=Ls, w_means=w_means, w_vars=w_vars,
          kern_params=kern_params, n_inducing=n_inducing, n_latent=n_latent,
