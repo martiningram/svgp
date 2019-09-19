@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+tf.enable_eager_execution()
 from sdm_ml.dataset import BBSDataset
 from sklearn.preprocessing import StandardScaler
 from ml_tools.lin_alg import num_triangular_elts
@@ -7,7 +8,7 @@ from sdm_ml.gp.utils import find_starting_z
 from svgp.tf.mogp import create_ls, compute_objective
 from functools import partial
 from ml_tools.tf_kernels import ard_rbf_kernel
-from svgp.likelihoods import bernoulli_probit_lik
+from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 
 
@@ -56,28 +57,28 @@ cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
 # Choose a subset of birds to start with before I work out memory fix
-bird_subset = np.random.choice(out_df.columns, size=32, replace=False)
+bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
 out_df = out_df[bird_subset]
 
-# site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
-# cov_df = cov_df.iloc[site_subset]
-# out_df = out_df.iloc[site_subset]
+site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
+cov_df = cov_df.iloc[site_subset]
+out_df = out_df.iloc[site_subset]
 
 scaler = StandardScaler()
 
 x = scaler.fit_transform(cov_df.values)
 y = out_df.values
 
-x = tf.constant(x, dtype=tf.float64)
-y = tf.constant(y, dtype=tf.float64)
-
-n_out = int(y.shape[1])
-
 n_inducing = 20
 n_latent = 4
 n_cov = int(x.shape[1])
 
 start_z = find_starting_z(x, n_inducing)
+
+x = tf.constant(x, dtype=tf.float64)
+y = tf.constant(y, dtype=tf.float64)
+
+n_out = int(y.shape[1])
 
 start_theta = np.concatenate([
     np.random.randn(n_inducing * n_latent) * 0.01,  # m
@@ -97,8 +98,6 @@ def to_minimize(theta):
 
     ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
         theta, n_inducing, n_latent, n_out, n_cov)
-
-    print(ms)
 
     ks = create_ks(kern_params)
 
