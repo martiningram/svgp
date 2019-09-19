@@ -33,7 +33,7 @@ def expectation(ys, vars, means, log_y_f):
     multiplied = tf.reshape(
         w_quad_tf, (-1, 1)) * log_y_f(ys, x_to_eval)
 
-    reduced = tf.reduce_sum(multiplied, axis=0)
+    reduced = tf.reduce_sum(multiplied)
 
     return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))
 
@@ -61,12 +61,12 @@ def expectation_custom(ys, vars, means, log_y_f):
 
         second_grad = g.gradient(grad, x_to_eval)
 
-        grad_mean = tf.reduce_sum(w_col * grad, axis=0)
-        grad_var = 0.5 * tf.reduce_sum(w_col * second_grad, axis=0)
+        grad_mean = tf.reduce_sum(w_col * grad)
+        grad_var = 0.5 * tf.reduce_sum(w_col * second_grad)
 
         return None, grad_var, grad_mean
 
     lik_val = log_y_f(ys, x_to_eval)
-    expectation_value = tf.reduce_sum(w_col * lik_val, axis=0)
+    expectation_value = tf.reduce_sum(w_col * lik_val)
 
     return expectation_value, grad
