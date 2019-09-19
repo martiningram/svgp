@@ -58,9 +58,9 @@ cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
 # Choose a subset of birds to start with before I work out memory fix
-bird_subset = np.random.choice(out_df.columns, size=128, replace=False)
-bird_subset[0] = 'Willet'
-# bird_subset = out_df.columns
+# bird_subset = np.random.choice(out_df.columns, size=128, replace=False)
+# bird_subset[0] = 'Willet'
+bird_subset = out_df.columns
 out_df = out_df[bird_subset]
 
 assert 'Willet' in bird_subset
