@@ -34,8 +34,6 @@ def expectation(ys, vars, means, log_y_f):
     multiplied = tf.reshape(
         w_quad_tf, (-1, 1)) * log_y_f(ys, x_to_eval)
 
-    import ipdb; ipdb.set_trace()
-
     reduced = tf.reduce_sum(multiplied)
 
     return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))

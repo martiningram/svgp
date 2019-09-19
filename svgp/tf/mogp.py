@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from svgp.tf.quadrature import expectation, expectation_map
+from svgp.tf.quadrature import expectation, expectation_custom_for_loop
 from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term
 from svgp.tf.kl import normal_kl_1d
 from .config import DTYPE
@@ -66,7 +66,7 @@ def compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks, log_lik_fun,
     # log_liks = tf.map_fn(curried_exp, [tf.transpose(y), tf.transpose(var_out),
     #                                    tf.transpose(m_out)], dtype=DTYPE)
 
-    log_liks = expectation_map(
+    log_liks = expectation(
         tf.reshape(y, (-1,)), tf.reshape(var_out, (-1,)),
         tf.reshape(m_out, (-1,)), log_lik_fun)
 
