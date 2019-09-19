@@ -33,6 +33,35 @@ def expectation(ys, vars, means, log_y_f):
     multiplied = tf.reshape(
         w_quad_tf, (-1, 1)) * log_y_f(ys, x_to_eval)
 
+    import ipdb; ipdb.set_trace()
+
+    reduced = tf.reduce_sum(multiplied)
+
+    return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))
+
+def expectation_map(ys, vars, means, log_y_f):
+    """
+    Returns the individual expectations for each of the ys.
+
+    Args:
+        ys: Outcomes, of shape (n,).
+        vars: Marginal variances, of shape(n,).
+        means: Marginal means, of shape (n,).
+        log_y_f: The log likelihood of y given f (a function).
+
+    Returns:
+        The expected log likelihood for each of the yn.
+    """
+
+    def to_map(inputs):
+
+        x, w = inputs
+
+        x_to_eval = transform_x(x, tf.sqrt(vars), means)
+        multiplied = w * log_y_f(ys, x_to_eval)
+        return tf.reduce_sum(multiplied)
+
+    multiplied = tf.map_fn(to_map, (x_quad_tf, w_quad_tf), dtype=DTYPE)
     reduced = tf.reduce_sum(multiplied)
 
     return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))
