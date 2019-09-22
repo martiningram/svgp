@@ -7,10 +7,10 @@ from ml_tools.lin_alg import num_triangular_elts
 from sdm_ml.gp.utils import find_starting_z
 from svgp.tf.mogp import create_ls, compute_objective
 from functools import partial
-from ml_tools.tf_kernels import ard_rbf_kernel
+from ml_tools.tf_kernels import ard_rbf_kernel, bias_kernel
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
-from svgp.tf.config import DTYPE
+from svgp.tf.config import DTYPE, JITTER
 
 
 def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
@@ -44,10 +44,14 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
 
 def create_ks(flat_kern_params):
 
-    ks = [partial(ard_rbf_kernel,
-          alpha=cur_params[0],
-          lengthscales=cur_params[1:])
-          for cur_params in tf.reshape(flat_kern_params, (n_latent, -1))]
+    rbf_params = flat_kern_params[:-1]
+    bias_sd = flat_kern_params[-1]
+
+    ks = [partial(ard_rbf_kernel, alpha=cur_params[0],
+                  lengthscales=cur_params[1:], jitter=JITTER) for cur_params in
+          tf.reshape(rbf_params, (n_latent - 1, -1))]
+
+    ks.append(partial(bias_kernel, jitter=JITTER, sd=bias_sd))
 
     return ks
 
@@ -59,10 +63,10 @@ out_df = dataset.training_set.outcomes
 
 # Choose a subset of birds to start with before I work out memory fix
 np.random.seed(2)
-bird_subset = np.random.choice(out_df.columns, size=128, replace=False)
+bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
 if 'Willet' not in bird_subset:
     bird_subset[0] = 'Willet'
-# bird_subset = out_df.columns
+bird_subset = out_df.columns
 out_df = out_df[bird_subset]
 
 assert 'Willet' in bird_subset
@@ -92,7 +96,7 @@ start_theta = np.concatenate([
     np.random.randn(num_triangular_elts(n_inducing) * n_latent),  # L
     np.random.randn(2 * n_out * n_latent),  # W means and sds
     start_z.reshape(-1),
-    np.random.uniform(1, 3, size=(n_cov + 1)*n_latent),  # kernel params
+    np.random.uniform(1, 3, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
 ])
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
