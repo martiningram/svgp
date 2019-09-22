@@ -58,10 +58,11 @@ cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
 # Choose a subset of birds to start with before I work out memory fix
+np.random.seed(2)
 bird_subset = np.random.choice(out_df.columns, size=128, replace=False)
 if 'Willet' not in bird_subset:
     bird_subset[0] = 'Willet'
-bird_subset = out_df.columns
+# bird_subset = out_df.columns
 out_df = out_df[bird_subset]
 
 assert 'Willet' in bird_subset
@@ -128,15 +129,15 @@ def to_minimize_with_grad(theta):
     return result, result_grad
 
 
-result = minimize(to_minimize_with_grad, start_theta, jac=True, tol=1e-1)
+result = minimize(to_minimize_with_grad, start_theta, jac=True)
 
 final_params = result.x
 
-np.savez('final_params', final_params)
+np.savez('final_params_128_40_default_tol_1e-5', final_params)
 
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split', ms=ms, Ls=Ls, w_means=w_means, w_vars=w_vars,
-         kern_params=kern_params, n_inducing=n_inducing, n_latent=n_latent,
-         birds=bird_subset)
+np.savez('final_params_128_40_default_tol_1e-5', ms=ms, Ls=Ls, w_means=w_means,
+         w_vars=w_vars, kern_params=kern_params, n_inducing=n_inducing,
+         n_latent=n_latent, birds=bird_subset, Z=Z)

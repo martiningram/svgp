@@ -1,6 +1,6 @@
 import numpy as np
 import tensorflow as tf
-from svgp.tf.quadrature import expectation, expectation_custom_for_loop
+from svgp.tf.quadrature import expectation
 from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term
 from svgp.tf.kl import normal_kl_1d
 from .config import DTYPE
