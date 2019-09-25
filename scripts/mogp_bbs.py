@@ -43,15 +43,14 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
 
 
 def create_ks(flat_kern_params):
+    # Fixed variance
 
-    rbf_params = flat_kern_params[:-1]
-    bias_sd = flat_kern_params[-1]
+    ks = [partial(ard_rbf_kernel, alpha=tf.constant(1., dtype=DTYPE),
+                  lengthscales=cur_params, jitter=JITTER) for cur_params in
+          tf.reshape(flat_kern_params, (n_latent - 1, -1))]
 
-    ks = [partial(ard_rbf_kernel, alpha=cur_params[0],
-                  lengthscales=cur_params[1:], jitter=JITTER) for cur_params in
-          tf.reshape(rbf_params, (n_latent - 1, -1))]
-
-    ks.append(partial(bias_kernel, jitter=JITTER, sd=bias_sd))
+    ks.append(partial(bias_kernel, jitter=JITTER,
+                      sd=tf.constant(1., dtype=DTYPE)))
 
     return ks
 
@@ -61,27 +60,46 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-# Choose a subset of birds to start with before I work out memory fix
+test_run = False
+
 np.random.seed(2)
-bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
-if 'Willet' not in bird_subset:
-    bird_subset[0] = 'Willet'
-bird_subset = out_df.columns
+
+if test_run:
+
+    # Choose a subset of birds to start with before I work out memory fix
+    bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
+    if 'Willet' not in bird_subset:
+        bird_subset[0] = 'Willet'
+
+else:
+
+    bird_subset = out_df.columns
+
 out_df = out_df[bird_subset]
 
 assert 'Willet' in bird_subset
 
-# site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
-# cov_df = cov_df.iloc[site_subset]
-# out_df = out_df.iloc[site_subset]
+if test_run:
+
+    site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
+    cov_df = cov_df.iloc[site_subset]
+    out_df = out_df.iloc[site_subset]
 
 scaler = StandardScaler()
 
 x = scaler.fit_transform(cov_df.values)
 y = out_df.values
 
-n_inducing = 50
-n_latent = 8
+if test_run:
+
+    n_inducing = 10
+    n_latent = 2
+
+else:
+
+    n_inducing = 50
+    n_latent = 8
+
 n_cov = int(x.shape[1])
 
 start_z = find_starting_z(x, n_inducing)
@@ -96,7 +114,8 @@ start_theta = np.concatenate([
     np.random.randn(num_triangular_elts(n_inducing) * n_latent),  # L
     np.random.randn(2 * n_out * n_latent),  # W means and sds
     start_z.reshape(-1),
-    np.random.uniform(1, 3, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
+    #np.random.uniform(1, 3, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
+    np.random.uniform(1, 3, size=(n_cov)*(n_latent - 1)),  # kernel params
 ])
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
@@ -137,11 +156,11 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True)
 
 final_params = result.x
 
-np.savez('final_params_128_40_default_tol_1e-5', final_params)
+np.savez('final_params_fixed_variance', final_params)
 
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_128_40_default_tol_1e-5', ms=ms, Ls=Ls, w_means=w_means,
+np.savez('final_params_fixed_variance_split', ms=ms, Ls=Ls, w_means=w_means,
          w_vars=w_vars, kern_params=kern_params, n_inducing=n_inducing,
          n_latent=n_latent, birds=bird_subset, Z=Z)
