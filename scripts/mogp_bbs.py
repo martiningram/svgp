@@ -149,18 +149,20 @@ def to_minimize_with_grad(theta):
 
     print(result, flush=True)
 
-    return result, result_grad
+    return result.numpy().astype(np.float64), result_grad.numpy().astype(
+        np.float64)
 
 
-result = minimize(to_minimize_with_grad, start_theta, jac=True)
+result = minimize(to_minimize_with_grad, start_theta, jac=True,
+                  method='L-BFGS-B')
 
 final_params = result.x
 
-np.savez('final_params_fixed_variance', final_params)
+np.savez('final_params_fixed_variance_25_quad_lbfgs', final_params)
 
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_fixed_variance_split', ms=ms, Ls=Ls, w_means=w_means,
-         w_vars=w_vars, kern_params=kern_params, n_inducing=n_inducing,
-         n_latent=n_latent, birds=bird_subset, Z=Z)
+np.savez('final_params_fixed_variance_split_25_quad_lbfgs', ms=ms, Ls=Ls,
+         w_means=w_means, w_vars=w_vars, kern_params=kern_params,
+         n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
