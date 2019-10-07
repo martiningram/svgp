@@ -42,7 +42,7 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
     return ms, Ls, w_means, w_vars, Z, kern_params
 
 
-def create_ks(flat_kern_params):
+def create_ks_fixed_variance(flat_kern_params):
     # Fixed variance
 
     ks = [partial(ard_rbf_kernel, alpha=tf.constant(1., dtype=DTYPE),
@@ -51,6 +51,20 @@ def create_ks(flat_kern_params):
 
     ks.append(partial(bias_kernel, jitter=JITTER,
                       sd=tf.constant(1., dtype=DTYPE)))
+
+    return ks
+
+
+def create_ks(flat_kern_params):
+
+    rbf_params = flat_kern_params[:-1]
+    bias_sd = flat_kern_params[-1]
+
+    ks = [partial(ard_rbf_kernel, alpha=cur_params[0],
+                  lengthscales=cur_params[1:], jitter=JITTER) for cur_params in
+          tf.reshape(rbf_params, (n_latent - 1, -1))]
+
+    ks.append(partial(bias_kernel, jitter=JITTER, sd=bias_sd))
 
     return ks
 
@@ -111,11 +125,11 @@ n_out = int(y.shape[1])
 
 start_theta = np.concatenate([
     np.random.randn(n_inducing * n_latent) * 0.01,  # m
-    np.random.randn(num_triangular_elts(n_inducing) * n_latent),  # L
-    np.random.randn(2 * n_out * n_latent),  # W means and sds
+    np.random.randn(num_triangular_elts(n_inducing) * n_latent) * 0.01,  # L
+    np.random.randn(2 * n_out * n_latent) * 0.1,  # W means and sds
     start_z.reshape(-1),
-    #np.random.uniform(1, 3, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
-    np.random.uniform(1, 3, size=(n_cov)*(n_latent - 1)),  # kernel params
+    np.random.uniform(0.8, 1.5, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
+    #np.random.uniform(1, 3, size=(n_cov)*(n_latent - 1)),  # kernel params
 ])
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
@@ -149,18 +163,19 @@ def to_minimize_with_grad(theta):
 
     print(result, flush=True)
 
-    return result, result_grad
+    return result.numpy().astype(np.float64), result_grad.numpy().astype(
+        np.float64)
 
 
 result = minimize(to_minimize_with_grad, start_theta, jac=True)
 
 final_params = result.x
 
-np.savez('final_params_fixed_variance', final_params)
+np.savez('final_params_25_quad_bfgs', final_params)
 
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_fixed_variance_split', ms=ms, Ls=Ls, w_means=w_means,
-         w_vars=w_vars, kern_params=kern_params, n_inducing=n_inducing,
-         n_latent=n_latent, birds=bird_subset, Z=Z)
+np.savez('final_params_split_25_quad_bfgs', ms=ms, Ls=Ls,
+         w_means=w_means, w_vars=w_vars, kern_params=kern_params,
+         n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
