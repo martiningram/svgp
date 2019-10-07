@@ -62,13 +62,12 @@ def create_ks_fixed_variance(flat_kern_params):
 
     ks = [partial(ard_rbf_kernel, alpha=tf.constant(1., dtype=DTYPE),
                   lengthscales=cur_params, jitter=JITTER) for cur_params in
-          tf.reshape(flat_kern_params, (n_latent - 1, -1))]
+          tf.reshape(flat_kern_params, (n_latent, -1))]
 
-    print(np.round(tf.reshape(flat_kern_params, (n_latent - 1, -1)).numpy(),
-          2))
+    print(np.round(tf.reshape(flat_kern_params, (n_latent, -1)).numpy(), 2))
 
-    ks.append(partial(bias_kernel, jitter=JITTER,
-                      sd=tf.constant(4., dtype=DTYPE)))
+    # ks.append(partial(bias_kernel, jitter=JITTER,
+    #                   sd=tf.constant(0.1, dtype=DTYPE)))
 
     return ks
 
@@ -124,7 +123,7 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = True
+test_run = False
 
 np.random.seed(2)
 
@@ -156,13 +155,13 @@ y = out_df.values
 
 if test_run:
 
-    n_inducing = 10
-    n_latent = 4
+    n_inducing = 20
+    n_latent = 8
 
 else:
 
     n_inducing = 50
-    n_latent = 8
+    n_latent = 12
 
 n_cov = int(x.shape[1])
 
@@ -174,7 +173,7 @@ y = tf.constant(y, dtype=DTYPE)
 n_out = int(y.shape[1])
 
 # kernel_vars = np.random.uniform(0.1, 0.4, size=n_latent - 1)
-kernel_lscales = np.random.uniform(2., 4., size=(n_latent - 1, n_cov))
+kernel_lscales = np.random.uniform(2., 4., size=(n_latent, n_cov))
 # kernel_params = np.concatenate([kernel_vars.reshape(-1, 1), kernel_lscales],
 #                                axis=1).reshape(-1)
 kernel_params = kernel_lscales.reshape(-1)
