@@ -1,10 +1,9 @@
 import jax.numpy as jnp
 from jax.ops.scatter import index_update
-from jax.scipy.stats import norm
 import numpy as onp
 
-from quadrature import expectation
-from kl import mvn_kl
+from .quadrature import expectation
+from .kl import mvn_kl
 from jax import jit
 
 
