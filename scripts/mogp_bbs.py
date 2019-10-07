@@ -42,6 +42,21 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
     return ms, Ls, w_means, w_vars, Z, kern_params
 
 
+def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
+
+    kmm = kernel_fun(inducing_pts, inducing_pts)
+
+    if lo_tri:
+
+        L = np.linalg.cholesky(kmm)
+        elts = np.tril_indices_from(L)
+        return L[elts]
+
+    else:
+
+        return kmm.reshape(-1)
+
+
 def create_ks_fixed_variance(flat_kern_params):
     # Fixed variance
 
@@ -49,13 +64,18 @@ def create_ks_fixed_variance(flat_kern_params):
                   lengthscales=cur_params, jitter=JITTER) for cur_params in
           tf.reshape(flat_kern_params, (n_latent - 1, -1))]
 
+    print(np.round(tf.reshape(flat_kern_params, (n_latent - 1, -1)).numpy(),
+          2))
+
     ks.append(partial(bias_kernel, jitter=JITTER,
-                      sd=tf.constant(1., dtype=DTYPE)))
+                      sd=tf.constant(4., dtype=DTYPE)))
 
     return ks
 
 
 def create_ks(flat_kern_params):
+
+    print_parameter_summary(flat_kern_params)
 
     rbf_params = flat_kern_params[:-1]
     bias_sd = flat_kern_params[-1]
@@ -69,19 +89,49 @@ def create_ks(flat_kern_params):
     return ks
 
 
+def print_parameter_summary(flat_kern_params):
+
+    print(f'Bias variance is: {flat_kern_params[-1]}')
+
+    rbf_params = tf.reshape(flat_kern_params[:-1], (n_latent - 1, -1))
+    rbf_vars = rbf_params[:, 0]
+    rbf_lscales = rbf_params[:, 1:]
+
+    print(f'RBF variances are: {np.round(rbf_vars.numpy(), 2)}')
+
+    print(np.round(rbf_lscales.numpy(), 2))
+
+
+def initialise_covariance_entries(kernel_creation_fun, flat_kernel_params,
+                                  start_z):
+
+    init_kernels = kernel_creation_fun(tf.constant(kernel_params, dtype=DTYPE))
+    start_cov_elts = list()
+
+    for cur_kernel_fun in init_kernels:
+        # Get the initial values
+        cur_vals = get_initial_values_from_kernel(
+            tf.constant(start_z, dtype=DTYPE), cur_kernel_fun, lo_tri=True)
+        start_cov_elts.append(cur_vals)
+
+    start_cov_elts = tf.concat(start_cov_elts, axis=0).numpy()
+
+    return start_cov_elts
+
+
 dataset = BBSDataset.init_using_env_variable()
 
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = False
+test_run = True
 
 np.random.seed(2)
 
 if test_run:
 
     # Choose a subset of birds to start with before I work out memory fix
-    bird_subset = np.random.choice(out_df.columns, size=4, replace=False)
+    bird_subset = np.random.choice(out_df.columns, size=32, replace=False)
     if 'Willet' not in bird_subset:
         bird_subset[0] = 'Willet'
 
@@ -95,7 +145,7 @@ assert 'Willet' in bird_subset
 
 if test_run:
 
-    site_subset = np.random.choice(len(cov_df.index), size=50, replace=False)
+    site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
     cov_df = cov_df.iloc[site_subset]
     out_df = out_df.iloc[site_subset]
 
@@ -107,7 +157,7 @@ y = out_df.values
 if test_run:
 
     n_inducing = 10
-    n_latent = 2
+    n_latent = 4
 
 else:
 
@@ -123,19 +173,29 @@ y = tf.constant(y, dtype=DTYPE)
 
 n_out = int(y.shape[1])
 
+# kernel_vars = np.random.uniform(0.1, 0.4, size=n_latent - 1)
+kernel_lscales = np.random.uniform(2., 4., size=(n_latent - 1, n_cov))
+# kernel_params = np.concatenate([kernel_vars.reshape(-1, 1), kernel_lscales],
+#                                axis=1).reshape(-1)
+kernel_params = kernel_lscales.reshape(-1)
+# kernel_params = np.append(kernel_params, np.array([0.1]))
+
+start_cov_elts = initialise_covariance_entries(
+    create_ks_fixed_variance, kernel_params, start_z)
+
 start_theta = np.concatenate([
-    np.random.randn(n_inducing * n_latent) * 0.01,  # m
-    np.random.randn(num_triangular_elts(n_inducing) * n_latent) * 0.01,  # L
-    np.random.randn(2 * n_out * n_latent) * 0.1,  # W means and sds
+    np.zeros(n_inducing * n_latent),  # m
+    start_cov_elts,  # L
+    np.random.randn(n_out * n_latent) * 0.1,  # W means
+    np.ones(n_out * n_latent),  # W sds
     start_z.reshape(-1),
-    np.random.uniform(0.8, 1.5, size=(n_cov + 1)*(n_latent - 1)+1),  # kernel params
-    #np.random.uniform(1, 3, size=(n_cov)*(n_latent - 1)),  # kernel params
+    kernel_params
 ])
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
 
 w_prior_mean = tf.constant(0., dtype=DTYPE)
-w_prior_var = tf.constant(1., dtype=DTYPE)
+w_prior_var = tf.constant(0.4, dtype=DTYPE)
 
 
 def to_minimize(theta):
@@ -143,7 +203,9 @@ def to_minimize(theta):
     ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
         theta, n_inducing, n_latent, n_out, n_cov)
 
-    ks = create_ks(kern_params)
+    print(np.round(w_means.numpy(), 2))
+
+    ks = create_ks_fixed_variance(kern_params)
 
     return -compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks,
                               bernoulli_probit_lik, w_prior_mean, w_prior_var)
@@ -167,15 +229,14 @@ def to_minimize_with_grad(theta):
         np.float64)
 
 
-result = minimize(to_minimize_with_grad, start_theta, jac=True)
+result = minimize(to_minimize_with_grad, start_theta, jac=True,
+                  method='L-BFGS-B')
 
 final_params = result.x
-
-np.savez('final_params_25_quad_bfgs', final_params)
 
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split_25_quad_bfgs', ms=ms, Ls=Ls,
+np.savez('final_params_split', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
