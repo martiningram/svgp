@@ -160,7 +160,7 @@ if test_run:
 
 else:
 
-    n_inducing = 50
+    n_inducing = 100
     n_latent = 12
 
 n_cov = int(x.shape[1])
@@ -194,7 +194,7 @@ start_theta = np.concatenate([
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
 
 w_prior_mean = tf.constant(0., dtype=DTYPE)
-w_prior_var = tf.constant(0.4, dtype=DTYPE)
+w_prior_var = tf.constant(1., dtype=DTYPE)
 
 
 def to_minimize(theta):
@@ -236,6 +236,6 @@ final_params = result.x
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split', ms=ms, Ls=Ls,
+np.savez('final_params_split_100_12_1_var', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
