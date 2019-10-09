@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
 tf.enable_eager_execution()
+
 from sdm_ml.dataset import BBSDataset
 from sklearn.preprocessing import StandardScaler
 from ml_tools.lin_alg import num_triangular_elts
@@ -11,9 +12,11 @@ from ml_tools.tf_kernels import ard_rbf_kernel, bias_kernel
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
+from ml_tools.tensorflow import rep_matrix
 
 
-def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
+def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
+                       same_z=False):
 
     n_m = n_inducing * n_latent
 
@@ -33,9 +36,22 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov):
     w_means = tf.reshape(w_means_flat, (n_latent, n_out))
     w_vars = tf.reshape(w_vars_flat, (n_latent, n_out))
 
-    n_z = n_inducing * n_cov
-    z_flat = theta[n_m+n_l+2*n_w:n_m+n_l+2*n_w+n_z]
-    Z = tf.reshape(z_flat, (n_inducing, n_cov))
+    if same_z:
+
+        n_z = n_inducing * n_cov
+        z_flat = theta[n_m+n_l+2*n_w:n_m+n_l+2*n_w+n_z]
+        Z = tf.reshape(z_flat, (n_inducing, n_cov))
+        Z = rep_matrix(Z, n_latent)
+
+    else:
+
+        n_z = n_inducing * n_cov * n_latent
+        z_flat = theta[n_m+n_l+2*n_w:n_m+n_l+2*n_w+n_z]
+        Z = tf.reshape(z_flat, (n_latent, n_inducing, n_cov))
+
+        print(np.round(
+            tf.reduce_mean(Z, axis=(1, 2)).numpy(), 2
+        ))
 
     kern_params = theta[n_m+n_l+2*n_w+n_z:]**2
 
@@ -123,7 +139,8 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = False
+test_run = True
+same_z = False
 
 np.random.seed(2)
 
@@ -182,12 +199,17 @@ kernel_params = kernel_lscales.reshape(-1)
 start_cov_elts = initialise_covariance_entries(
     create_ks_fixed_variance, kernel_params, start_z)
 
+if same_z:
+    z_init = start_z
+else:
+    z_init = rep_matrix(start_z, n_latent).numpy()
+
 start_theta = np.concatenate([
     np.zeros(n_inducing * n_latent),  # m
     start_cov_elts,  # L
     np.random.randn(n_out * n_latent) * 0.1,  # W means
     np.ones(n_out * n_latent),  # W sds
-    start_z.reshape(-1),
+    z_init.reshape(-1),
     kernel_params
 ])
 
@@ -200,7 +222,7 @@ w_prior_var = tf.constant(1., dtype=DTYPE)
 def to_minimize(theta):
 
     ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
-        theta, n_inducing, n_latent, n_out, n_cov)
+        theta, n_inducing, n_latent, n_out, n_cov, same_z=same_z)
 
     print(np.round(w_means.numpy(), 2))
 
