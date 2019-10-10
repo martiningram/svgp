@@ -13,6 +13,7 @@ from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
 from ml_tools.tensorflow import rep_matrix
+from svgp.tf.utils import get_initial_values_from_kernel
 
 
 def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
@@ -56,21 +57,6 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
     kern_params = theta[n_m+n_l+2*n_w+n_z:]**2
 
     return ms, Ls, w_means, w_vars, Z, kern_params
-
-
-def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
-
-    kmm = kernel_fun(inducing_pts, inducing_pts)
-
-    if lo_tri:
-
-        L = np.linalg.cholesky(kmm)
-        elts = np.tril_indices_from(L)
-        return L[elts]
-
-    else:
-
-        return kmm.reshape(-1)
 
 
 def create_ks_fixed_variance(flat_kern_params, kern_fun):

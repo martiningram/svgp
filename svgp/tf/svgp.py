@@ -22,7 +22,7 @@ def project_to_f(kmm, knm, knn, m, L):
     return tf.squeeze(mean), cov
 
 
-def compute_qf_mean_cov(L, m, X, Z, kernel_fn):
+def compute_qf_mean_cov(L, m, X, Z, kernel_fn, diag_only=False):
     """
     Computes q[f], the variational distribution on the function values for
     each data point X.
