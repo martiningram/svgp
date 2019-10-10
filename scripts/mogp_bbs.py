@@ -8,7 +8,8 @@ from ml_tools.lin_alg import num_triangular_elts
 from sdm_ml.gp.utils import find_starting_z
 from svgp.tf.mogp import create_ls, compute_objective
 from functools import partial
-from ml_tools.tf_kernels import ard_rbf_kernel, bias_kernel, matern_kernel_32
+from ml_tools.tf_kernels import (ard_rbf_kernel, bias_kernel, matern_kernel_32,
+                                 matern_kernel_12)
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
@@ -132,7 +133,7 @@ out_df = dataset.training_set.outcomes
 
 test_run = False
 same_z = False
-kern_to_use = matern_kernel_32
+kern_to_use = matern_kernel_12
 
 np.random.seed(2)
 
@@ -253,6 +254,6 @@ final_params = result.x
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split_separate_inducing_very_strict', ms=ms, Ls=Ls,
-         w_means=w_means, w_vars=w_vars, kern_params=kern_params,
+np.savez('final_params_split_separate_inducing_very_strict_matern12', ms=ms,
+         Ls=Ls, w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
