@@ -8,7 +8,7 @@ from ml_tools.lin_alg import num_triangular_elts
 from sdm_ml.gp.utils import find_starting_z
 from svgp.tf.mogp import create_ls, compute_objective
 from functools import partial
-from ml_tools.tf_kernels import ard_rbf_kernel, bias_kernel
+from ml_tools.tf_kernels import ard_rbf_kernel, bias_kernel, matern_kernel_32
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
@@ -73,10 +73,10 @@ def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
         return kmm.reshape(-1)
 
 
-def create_ks_fixed_variance(flat_kern_params):
+def create_ks_fixed_variance(flat_kern_params, kern_fun):
     # Fixed variance
 
-    ks = [partial(ard_rbf_kernel, alpha=tf.constant(1., dtype=DTYPE),
+    ks = [partial(kern_fun, alpha=tf.constant(1., dtype=DTYPE),
                   lengthscales=cur_params, jitter=JITTER) for cur_params in
           tf.reshape(flat_kern_params, (n_latent, -1))]
 
@@ -141,13 +141,14 @@ out_df = dataset.training_set.outcomes
 
 test_run = True
 same_z = False
+kern_to_use = matern_kernel_32
 
 np.random.seed(2)
 
 if test_run:
 
     # Choose a subset of birds to start with before I work out memory fix
-    bird_subset = np.random.choice(out_df.columns, size=32, replace=False)
+    bird_subset = np.random.choice(out_df.columns, size=16, replace=False)
     if 'Willet' not in bird_subset:
         bird_subset[0] = 'Willet'
 
@@ -161,9 +162,11 @@ assert 'Willet' in bird_subset
 
 if test_run:
 
-    site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
-    cov_df = cov_df.iloc[site_subset]
-    out_df = out_df.iloc[site_subset]
+    pass
+
+    # site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
+    # cov_df = cov_df.iloc[site_subset]
+    # out_df = out_df.iloc[site_subset]
 
 scaler = StandardScaler()
 
@@ -196,8 +199,10 @@ kernel_lscales = np.random.uniform(2., 4., size=(n_latent, n_cov))
 kernel_params = kernel_lscales.reshape(-1)
 # kernel_params = np.append(kernel_params, np.array([0.1]))
 
+create_k_fun = partial(create_ks_fixed_variance, kern_fun=kern_to_use)
+
 start_cov_elts = initialise_covariance_entries(
-    create_ks_fixed_variance, kernel_params, start_z)
+    create_k_fun, kernel_params, start_z)
 
 if same_z:
     z_init = start_z
@@ -226,7 +231,7 @@ def to_minimize(theta):
 
     print(np.round(w_means.numpy(), 2))
 
-    ks = create_ks_fixed_variance(kern_params)
+    ks = create_k_fun(kern_params)
 
     return -compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks,
                               bernoulli_probit_lik, w_prior_mean, w_prior_var)
