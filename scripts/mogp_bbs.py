@@ -76,9 +76,14 @@ def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
 def create_ks_fixed_variance(flat_kern_params, kern_fun):
     # Fixed variance
 
-    ks = [partial(kern_fun, alpha=tf.constant(1., dtype=DTYPE),
-                  lengthscales=cur_params, jitter=JITTER) for cur_params in
-          tf.reshape(flat_kern_params, (n_latent, -1))]
+    # 0.1 variance for all kernel components except the last
+    alphas = [np.sqrt(0.1) for _ in range(n_latent - 1)]
+    alphas.append(np.sqrt(0.1))
+
+    ks = [partial(kern_fun, alpha=tf.constant(cur_alpha, dtype=DTYPE),
+                  lengthscales=cur_params, jitter=JITTER) for cur_params,
+          cur_alpha in zip(tf.reshape(flat_kern_params, (n_latent, -1)),
+                           alphas)]
 
     print(np.round(tf.reshape(flat_kern_params, (n_latent, -1)).numpy(), 2))
 
@@ -139,7 +144,7 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = True
+test_run = False
 same_z = False
 kern_to_use = matern_kernel_32
 
@@ -163,7 +168,6 @@ assert 'Willet' in bird_subset
 if test_run:
 
     pass
-
     # site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
     # cov_df = cov_df.iloc[site_subset]
     # out_df = out_df.iloc[site_subset]
@@ -263,6 +267,6 @@ final_params = result.x
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split_100_12_1_var', ms=ms, Ls=Ls,
+np.savez('final_params_split_separate_inducing_very_strict', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
