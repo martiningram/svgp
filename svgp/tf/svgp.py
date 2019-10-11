@@ -10,12 +10,12 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=True):
 
     m = tf.reshape(m, (-1, 1))
 
-    mean = tf.matmul(knm, tf.linalg.solve(kmm, m))
+    kmm_chol = tf.linalg.cholesky(kmm)
+
+    mean = tf.matmul(knm, solve_via_cholesky(kmm_chol, m))
 
     S = tf.matmul(L, tf.transpose(L)) + \
         tf.eye(int(L.shape[0]), dtype=DTYPE) * JITTER
-
-    kmm_chol = tf.linalg.cholesky(kmm)
 
     V1 = solve_via_cholesky(kmm_chol, S - kmm)
     V2 = solve_via_cholesky(kmm_chol, tf.transpose(knm))
