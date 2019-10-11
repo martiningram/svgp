@@ -131,9 +131,9 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = False
+test_run = True
 same_z = False
-kern_to_use = matern_kernel_12
+kern_to_use = matern_kernel_32
 
 np.random.seed(2)
 
@@ -154,10 +154,10 @@ assert 'Willet' in bird_subset
 
 if test_run:
 
-    pass
-    # site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
-    # cov_df = cov_df.iloc[site_subset]
-    # out_df = out_df.iloc[site_subset]
+    # pass
+    site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
+    cov_df = cov_df.iloc[site_subset]
+    out_df = out_df.iloc[site_subset]
 
 scaler = StandardScaler()
 

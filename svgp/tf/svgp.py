@@ -6,7 +6,7 @@ from .config import DTYPE, JITTER
 from ml_tools.tensorflow import solve_via_cholesky
 
 
-def project_to_f(kmm, knm, knn, m, L, diag_only=False):
+def project_to_f(kmm, knm, knn, m, L, diag_only=True):
 
     m = tf.reshape(m, (-1, 1))
 
@@ -17,10 +17,6 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=False):
 
     kmm_chol = tf.linalg.cholesky(kmm)
 
-    # V1_old = tf.linalg.solve(kmm, S - kmm)
-    # V2_old = tf.linalg.solve(kmm, tf.transpose(knm))
-
-    # TODO This needs testing
     V1 = solve_via_cholesky(kmm_chol, S - kmm)
     V2 = solve_via_cholesky(kmm_chol, tf.transpose(knm))
 
@@ -35,7 +31,7 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=False):
     return tf.squeeze(mean), cov
 
 
-def compute_qf_mean_cov(L, m, X, Z, kernel_fn, diag_only=False):
+def compute_qf_mean_cov(L, m, X, Z, kernel_fn, diag_only=True):
     """
     Computes q[f], the variational distribution on the function values for
     each data point X.
