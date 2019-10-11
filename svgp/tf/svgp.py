@@ -22,6 +22,7 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=True):
 
     if diag_only:
 
+        # Trick to compute the diagonal only of the matrix product
         cov = knn + tf.einsum('ik,kl,li->i', knm, V1, V2)
 
     else:

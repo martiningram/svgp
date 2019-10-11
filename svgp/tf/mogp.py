@@ -53,6 +53,18 @@ def calculate_approximate_means_and_vars(m_proj, var_proj, w_means, w_sds):
     return means, vars
 
 
+def compute_mogp_kl_term(ms, Ls, ks, Z, w_means, w_vars, w_prior_mean,
+                         w_prior_var):
+
+    kls = tf.reduce_sum([compute_kl_term(cur_m, cur_l, cur_z, cur_k) for cur_m,
+                         cur_l, cur_k, cur_z in zip(ms, Ls, ks, Z)])
+
+    kl_w = tf.reduce_sum(normal_kl_1d(w_means, w_vars, w_prior_mean,
+                                      w_prior_var))
+
+    return kls + kl_w
+
+
 def compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks, log_lik_fun,
                       w_prior_mean, w_prior_var):
 
@@ -66,12 +78,9 @@ def compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks, log_lik_fun,
 
     total_log_lik = tf.reduce_sum(log_liks)
 
-    kls = tf.reduce_sum([compute_kl_term(cur_m, cur_l, cur_z, cur_k) for cur_m,
-                         cur_l, cur_k, cur_z in zip(ms, Ls, ks, Z)])
+    kl = compute_mogp_kl_term(ms, Ls, ks, Z, w_means, w_vars, w_prior_mean,
+                              w_prior_var)
 
-    kl_w = tf.reduce_sum(normal_kl_1d(w_means, w_vars, w_prior_mean,
-                                      w_prior_var))
-
-    total_objective = total_log_lik - kls - kl_w
+    total_objective = total_log_lik - kl
 
     return total_objective
