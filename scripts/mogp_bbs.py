@@ -55,9 +55,10 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
             tf.reduce_mean(Z, axis=(1, 2)).numpy(), 2
         ))
 
-    kern_params = theta[n_m+n_l+2*n_w+n_z:]**2
+    kern_params = theta[n_m+n_l+2*n_w+n_z:-1]**2
+    intercept = theta[-1]
 
-    return ms, Ls, w_means, w_vars, Z, kern_params
+    return ms, Ls, w_means, w_vars, Z, kern_params, intercept
 
 
 def create_ks_fixed_variance(flat_kern_params, kern_fun):
@@ -206,7 +207,8 @@ start_theta = np.concatenate([
     np.random.randn(n_out * n_latent) * 0.1,  # W means
     np.ones(n_out * n_latent),  # W sds
     z_init.reshape(-1),
-    kernel_params
+    kernel_params,
+    [0.]
 ])
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
@@ -217,15 +219,17 @@ w_prior_var = tf.constant(1., dtype=DTYPE)
 
 def to_minimize(theta):
 
-    ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
+    ms, Ls, w_means, w_vars, Z, kern_params, intercept = extract_parameters(
         theta, n_inducing, n_latent, n_out, n_cov, same_z=same_z)
 
     print(np.round(w_means.numpy(), 2))
+    print(intercept)
 
     ks = create_k_fun(kern_params)
 
     return -compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks,
-                              bernoulli_probit_lik, w_prior_mean, w_prior_var)
+                              bernoulli_probit_lik, w_prior_mean, w_prior_var,
+                              intercept)
 
 
 def to_minimize_with_grad(theta):
@@ -251,9 +255,10 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_params = result.x
 
-ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
+ms, Ls, w_means, w_vars, Z, kern_params, intercept = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
 np.savez('final_params_split_separate_inducing_very_strict_matern12', ms=ms,
          Ls=Ls, w_means=w_means, w_vars=w_vars, kern_params=kern_params,
-         n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
+         n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z,
+         intercept=intercept)
