@@ -259,20 +259,10 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_params = result.x
 
-<<<<<<< HEAD
-ms, Ls, w_means, w_vars, Z, kern_params, w_prior_var = extract_parameters(
+ms, Ls, w_means, w_vars, Z, kern_params, w_prior_var, intercept = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
 np.savez('final_params_split_separate_fit_prior_var', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z,
-         w_prior_var=w_prior_var)
-=======
-ms, Ls, w_means, w_vars, Z, kern_params, intercept = extract_parameters(
-    final_params, n_inducing, n_latent, n_out, n_cov)
-
-np.savez('final_params_split_separate_inducing_very_strict_matern12', ms=ms,
-         Ls=Ls, w_means=w_means, w_vars=w_vars, kern_params=kern_params,
-         n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z,
-         intercept=intercept)
->>>>>>> feat/add_intercept
+         w_prior_var=w_prior_var, intercept=intercept)
