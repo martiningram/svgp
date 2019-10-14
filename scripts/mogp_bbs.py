@@ -55,14 +55,23 @@ def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
             tf.reduce_mean(Z, axis=(1, 2)).numpy(), 2
         ))
 
-    kern_params = theta[n_m+n_l+2*n_w+n_z:-2]**2
-    prior_var = theta[-2]**2
+    n_pw = n_latent
 
-    print('prior_var', prior_var)
+    w_prior_means = theta[n_m+n_l+2*n_w+n_z:n_m+n_l+2*n_w+n_z+n_pw]
+    w_prior_vars = theta[n_m+n_l+2*n_w+n_z+n_pw:n_m+n_l+2*n_w+n_z+2*n_pw]**2
+
+    print(w_prior_means)
+    print(w_prior_vars)
+
+    w_prior_means = tf.reshape(w_prior_means, (-1, 1))
+    w_prior_vars = tf.reshape(w_prior_vars, (-1, 1))
+
+    kern_params = theta[n_m+n_l+2*n_w+n_z+2*n_pw:-1]**2
 
     intercept = theta[-1]
 
-    return ms, Ls, w_means, w_vars, Z, kern_params, prior_var, intercept
+    return (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means,
+            w_prior_vars, intercept)
 
 
 def create_ks_fixed_variance(flat_kern_params, kern_fun):
@@ -136,7 +145,7 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = False
+test_run = True
 same_z = False
 kern_to_use = matern_kernel_32
 
@@ -211,8 +220,9 @@ start_theta = np.concatenate([
     np.random.randn(n_out * n_latent) * 0.1,  # W means
     np.ones(n_out * n_latent),  # W sds
     z_init.reshape(-1),
+    np.zeros(n_latent),
+    np.ones(n_latent),
     kernel_params,
-    [1.],
     [0.]
 ])
 
@@ -223,8 +233,9 @@ w_prior_mean = tf.constant(0., dtype=DTYPE)
 
 def to_minimize(theta):
 
-    ms, Ls, w_means, w_vars, Z, kern_params, w_prior_var, intercept = extract_parameters(
-        theta, n_inducing, n_latent, n_out, n_cov, same_z=same_z)
+    (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means, w_prior_vars,
+     intercept) = extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
+                                     same_z=same_z)
 
     print(np.round(w_means.numpy(), 2))
     print(intercept)
@@ -233,7 +244,8 @@ def to_minimize(theta):
 
     return -compute_objective(
         x, y, Z, ms, Ls, w_means, w_vars, ks, bernoulli_probit_lik,
-        w_prior_mean, w_prior_var, intercept) + (w_prior_var**2 / 2.)
+        w_prior_means, w_prior_vars, intercept) + tf.reduce_sum(
+            w_prior_vars**2 / 2.) + tf.reduce_sum(w_prior_means**2 / 2.)
 
 
 def to_minimize_with_grad(theta):
@@ -259,10 +271,12 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_params = result.x
 
-ms, Ls, w_means, w_vars, Z, kern_params, w_prior_var, intercept = extract_parameters(
-    final_params, n_inducing, n_latent, n_out, n_cov)
+(ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means, w_prior_vars,
+ intercept) = extract_parameters(final_params, n_inducing, n_latent, n_out,
+                                 n_cov)
 
 np.savez('final_params_split_separate_fit_prior_var', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z,
-         w_prior_var=w_prior_var, intercept=intercept)
+         w_prior_vars=w_prior_vars, intercept=intercept,
+         w_prior_means=w_prior_means)
