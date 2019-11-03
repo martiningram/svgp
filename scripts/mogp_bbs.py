@@ -15,60 +15,34 @@ from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
 from ml_tools.tensorflow import rep_matrix
 from svgp.tf.utils import get_initial_values_from_kernel
+from ml_tools.flattening import flatten_and_summarise, reconstruct_tf
 
 
-def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
-                       same_z=False):
+def extract_parameters(theta, summaries, n_inducing, n_latent, same_z=False):
+    # Picks out the parameters and constrains some to be positive
 
-    n_m = n_inducing * n_latent
+    theta_dict = reconstruct_tf(theta, summaries)
 
-    ms_flat = theta[:n_m]
-    ms = tf.reshape(ms_flat, (n_latent, n_inducing))
+    ms = theta_dict['m']
+    Ls = create_ls(theta_dict['L_elts'], n_inducing, n_latent)
 
-    n_l = num_triangular_elts(n_inducing) * n_latent
-    Ls_flat = theta[n_m:n_m+n_l]
-    Ls_flat_per_latent = tf.reshape(Ls_flat, (n_latent, -1))
-    Ls = create_ls(Ls_flat_per_latent, n_inducing, n_latent)
-
-    n_w = n_latent * n_out
-
-    w_means_flat = theta[n_m+n_l:n_m+n_l+n_w]
-    w_vars_flat = theta[n_m+n_l+n_w:n_m+n_l+2*n_w]**2
-
-    w_means = tf.reshape(w_means_flat, (n_latent, n_out))
-    w_vars = tf.reshape(w_vars_flat, (n_latent, n_out))
+    w_means = theta_dict['W_means']
+    w_vars = theta_dict['W_sds']**2
 
     if same_z:
-
-        n_z = n_inducing * n_cov
-        z_flat = theta[n_m+n_l+2*n_w:n_m+n_l+2*n_w+n_z]
-        Z = tf.reshape(z_flat, (n_inducing, n_cov))
-        Z = rep_matrix(Z, n_latent)
-
+        Z = rep_matrix(theta_dict['Z'], n_latent)
     else:
+        Z = theta_dict['Z']
 
-        n_z = n_inducing * n_cov * n_latent
-        z_flat = theta[n_m+n_l+2*n_w:n_m+n_l+2*n_w+n_z]
-        Z = tf.reshape(z_flat, (n_latent, n_inducing, n_cov))
-
-        print(np.round(
-            tf.reduce_mean(Z, axis=(1, 2)).numpy(), 2
-        ))
-
-    n_pw = n_latent
-
-    w_prior_means = theta[n_m+n_l+2*n_w+n_z:n_m+n_l+2*n_w+n_z+n_pw]
-    w_prior_vars = theta[n_m+n_l+2*n_w+n_z+n_pw:n_m+n_l+2*n_w+n_z+2*n_pw]**2
+    w_prior_means = theta_dict['W_prior_mean']
+    w_prior_vars = theta_dict['W_prior_sd']**2
 
     print(w_prior_means)
     print(w_prior_vars)
 
-    w_prior_means = tf.reshape(w_prior_means, (-1, 1))
-    w_prior_vars = tf.reshape(w_prior_vars, (-1, 1))
+    kern_params = theta_dict['kernel_params']**2
 
-    kern_params = theta[n_m+n_l+2*n_w+n_z+2*n_pw:-1]**2
-
-    intercept = theta[-1]
+    intercept = tf.squeeze(theta_dict['intercept'])
 
     return (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means,
             w_prior_vars, intercept)
@@ -135,7 +109,7 @@ def initialise_covariance_entries(kernel_creation_fun, flat_kernel_params,
             tf.constant(start_z, dtype=DTYPE), cur_kernel_fun, lo_tri=True)
         start_cov_elts.append(cur_vals)
 
-    start_cov_elts = tf.concat(start_cov_elts, axis=0).numpy()
+    start_cov_elts = tf.stack(start_cov_elts, axis=0).numpy()
 
     return start_cov_elts
 
@@ -168,8 +142,7 @@ assert 'Willet' in bird_subset
 
 if test_run:
 
-    # pass
-    site_subset = np.random.choice(len(cov_df.index), size=400, replace=False)
+    site_subset = np.random.choice(len(cov_df.index), size=100, replace=False)
     cov_df = cov_df.iloc[site_subset]
     out_df = out_df.iloc[site_subset]
 
@@ -181,7 +154,7 @@ y = out_df.values
 if test_run:
 
     n_inducing = 20
-    n_latent = 8
+    n_latent = 4
 
 else:
 
@@ -214,27 +187,28 @@ if same_z:
 else:
     z_init = rep_matrix(start_z, n_latent).numpy()
 
-start_theta = np.concatenate([
-    np.zeros(n_inducing * n_latent),  # m
-    start_cov_elts,  # L
-    np.random.randn(n_out * n_latent) * 0.1,  # W means
-    np.ones(n_out * n_latent),  # W sds
-    z_init.reshape(-1),
-    np.zeros(n_latent),
-    np.ones(n_latent),
-    kernel_params,
-    [0.]
-])
+
+start_theta_dict = {
+    'm': np.zeros((n_latent, n_inducing)),
+    'L_elts': start_cov_elts,
+    'W_means': np.random.randn(n_latent, n_out) * 0.1,
+    'W_sds': np.ones((n_latent, n_out)),
+    'Z': z_init,
+    'W_prior_mean': np.zeros((n_latent, 1)),
+    'W_prior_sd': np.ones((n_latent, 1)),
+    'kernel_params': kernel_params,
+    'intercept': np.zeros(1)
+}
+
+start_theta, summaries = flatten_and_summarise(**start_theta_dict)
 
 start_theta_tensor = tf.Variable(start_theta, dtype=DTYPE)
-
-w_prior_mean = tf.constant(0., dtype=DTYPE)
 
 
 def to_minimize(theta):
 
     (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means, w_prior_vars,
-     intercept) = extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
+     intercept) = extract_parameters(theta, summaries, n_inducing, n_latent,
                                      same_z=same_z)
 
     print(np.round(w_means.numpy(), 2))
@@ -272,8 +246,7 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 final_params = result.x
 
 (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means, w_prior_vars,
- intercept) = extract_parameters(final_params, n_inducing, n_latent, n_out,
-                                 n_cov)
+ intercept) = extract_parameters(final_params, summaries, n_inducing, n_latent)
 
 np.savez('final_params_split_separate_fit_prior_var', ms=ms, Ls=Ls,
          w_means=w_means, w_vars=w_vars, kern_params=kern_params,
