@@ -15,6 +15,7 @@ from scipy.optimize import minimize
 from svgp.tf.config import DTYPE, JITTER
 from ml_tools.tensorflow import rep_matrix
 from svgp.tf.utils import get_initial_values_from_kernel
+import tensorflow_probability as tfp
 
 
 def extract_parameters(theta, n_inducing, n_latent, n_out, n_cov,
@@ -131,7 +132,7 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = True
+test_run = False
 same_z = False
 kern_to_use = matern_kernel_32
 
@@ -224,8 +225,10 @@ def to_minimize(theta):
 
     ks = create_k_fun(kern_params)
 
-    return -compute_objective(x, y, Z, ms, Ls, w_means, w_vars, ks,
-                              bernoulli_probit_lik, w_prior_mean, w_prior_var)
+    return -compute_objective(
+        x, y, Z, ms, Ls, w_means, w_vars, ks, bernoulli_probit_lik,
+        w_prior_mean, w_prior_var) - tf.reduce_sum(
+            tfp.distributions.Gamma(3, 3).log_prob(kern_params))
 
 
 def to_minimize_with_grad(theta):
@@ -254,6 +257,6 @@ final_params = result.x
 ms, Ls, w_means, w_vars, Z, kern_params = extract_parameters(
     final_params, n_inducing, n_latent, n_out, n_cov)
 
-np.savez('final_params_split_separate_inducing_very_strict_matern12', ms=ms,
+np.savez('final_params_split_lscale_prior', ms=ms,
          Ls=Ls, w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z)
