@@ -18,6 +18,14 @@ from svgp.tf.utils import get_initial_values_from_kernel
 from ml_tools.flattening import flatten_and_summarise, reconstruct_tf
 
 
+# TODO: Add a prior function which takes in the dictionary of parameters
+# and returns the prior probability
+# TODO: Consider returning a dictionary in extract_parameters
+# TODO: Make `fit` function which takes in a dataset and does all these
+# things in sequence for convenience. Returns the dictionary of fit parameters.
+# TODO: Try bias kernel again.
+
+
 def extract_parameters(theta, summaries, n_inducing, n_latent, same_z=False):
     # Picks out the parameters and constrains some to be positive
 
@@ -37,8 +45,8 @@ def extract_parameters(theta, summaries, n_inducing, n_latent, same_z=False):
     w_prior_means = theta_dict['W_prior_mean']
     w_prior_vars = theta_dict['W_prior_sd']**2
 
-    print(w_prior_means)
-    print(w_prior_vars)
+    print(tf.reshape(w_prior_means, (-1,)))
+    print(tf.reshape(w_prior_vars, (-1,)))
 
     kern_params = theta_dict['kernel_params']**2
 
@@ -119,7 +127,7 @@ dataset = BBSDataset.init_using_env_variable()
 cov_df = dataset.training_set.covariates
 out_df = dataset.training_set.outcomes
 
-test_run = True
+test_run = False
 same_z = False
 kern_to_use = matern_kernel_32
 
@@ -248,8 +256,8 @@ final_params = result.x
 (ms, Ls, w_means, w_vars, Z, kern_params, w_prior_means, w_prior_vars,
  intercept) = extract_parameters(final_params, summaries, n_inducing, n_latent)
 
-np.savez('final_params_split_separate_fit_prior_var', ms=ms, Ls=Ls,
-         w_means=w_means, w_vars=w_vars, kern_params=kern_params,
+np.savez('final_params_split_separate_fit_prior_var_new_flattening', ms=ms,
+         Ls=Ls, w_means=w_means, w_vars=w_vars, kern_params=kern_params,
          n_inducing=n_inducing, n_latent=n_latent, birds=bird_subset, Z=Z,
          w_prior_vars=w_prior_vars, intercept=intercept,
          w_prior_means=w_prior_means)
