@@ -128,9 +128,10 @@ def compute_kl_term(m, L, Z, kern_fn):
     return kl
 
 
-def compute_objective(x, y, m, L, Z, log_lik_fn, kern_fn):
+def compute_objective(X, y, m, L, Z, log_lik_fn, kern_fn):
+    """A convenience function to compute the ELBO objective."""
 
-    mean, var = compute_qf_mean_cov(L, m, x, Z, kern_fn, diag_only=True)
+    mean, var = compute_qf_mean_cov(L, m, X, Z, kern_fn, diag_only=True)
 
     expected_log_lik = compute_expected_log_lik(mean, var, y, log_lik_fn)
 
@@ -141,6 +142,7 @@ def compute_objective(x, y, m, L, Z, log_lik_fn, kern_fn):
 
 
 def extract_params(theta, n_inducing, square_kern_params=True):
+    """A convenience function to extract parameters from a 1D vector theta."""
     # TODO: Not sure this should be in the library.
 
     # Get the parameters

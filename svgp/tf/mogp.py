@@ -7,6 +7,20 @@ from .config import DTYPE
 
 
 def create_ls(elements, n_inducing, n_latent):
+    """Creates the individual Cholesky factors L for each of the latent
+    GPs in the MOGP.
+
+    Args:
+        elements: An array of shape [n_latent x T], where T is the number of
+            triangular elements in the Cholesky factor L of size [n_inducing x
+            n_inducing].
+        n_inducing: The number of inducing points.
+        n_latent: The number of latent GPs in the MOGP.
+
+    Returns:
+        A tensor of shape [n_latent x n_inducing x n_inducing] containing
+        the Cholesky factors of each GP in the MOGP.
+    """
 
     Ls = list()
 
@@ -20,6 +34,22 @@ def create_ls(elements, n_inducing, n_latent):
 
 
 def project_latents(x, Z, ms, Ls, ks):
+    """
+    Projects each of the latent GPs in the MOGP from values at the inducing
+    points q[u] to the values at the data points q[f].
+
+    Args:
+        x: Data point locations.
+        Z: Inducing point locations.
+        ms: The means of each latent GP; shape is [n_latent x n_inducing].
+        Ls: The Cholesky factors of each latent GP; shape is
+            [n_latent x n_inducing x n_inducing].
+        ks: A list of kernel functions, one for each latent GP.
+
+    Returns:
+        The projected means of shape [n_latent x n_data] and the projected
+        variance [n_latent x n_data] for each latent GP.
+    """
 
     # First trick will be to project all the latent stuff:
     # I'm doing a for loop here for now but ultimately we can do better things
