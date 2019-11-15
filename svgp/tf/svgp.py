@@ -7,6 +7,24 @@ from ml_tools.tensorflow import solve_via_cholesky
 
 
 def project_to_f(kmm, knm, knn, m, L, diag_only=True):
+    """
+    Projects the GP on the inducing point values u to the GP on the function
+    values f.
+
+    Args:
+        kmm: The kernel function evaluated on the inducing point locations.
+        knm: The kernel function evaluated on the data locations and the
+            inducing point locations.
+        knn: The kernel function evaluated on the data locations.
+        m: The means of the GP at the inducing point locations.
+        L: The Cholesky factor of the GP at the inducing point locations.
+        diag_only: If True, returns only the diagonal covariance. If True,
+            it also expects knn to be diagonal.
+
+    Returns:
+        The mean and covariance [diagonal only if diag_only] at the data
+        points, as a tuple.
+    """
 
     m = tf.reshape(m, (-1, 1))
 
@@ -36,6 +54,21 @@ def compute_qf_mean_cov(L, m, X, Z, kernel_fn, diag_only=True):
     """
     Computes q[f], the variational distribution on the function values for
     each data point X.
+
+    Args:
+        L: Cholesky factor of the variational GP covariance at the inducing
+            points.
+        m: Mean of the variational approximation at the inducing points.
+        X: Data point locations.
+        Z: Inducing point locations.
+        kernel_fn: The kernel function to use. Must take two positional
+            arguments [the kernel inputs] and an optional argument diag_only.
+        diag_only: If true, returns only the diagonal elements of the
+            covariance.
+
+    Returns:
+        The mean and covariance [diagonal only if diag_only=True] at the
+        data points X.
     """
 
     knm = kernel_fn(X, Z)
@@ -48,6 +81,19 @@ def compute_qf_mean_cov(L, m, X, Z, kernel_fn, diag_only=True):
 
 
 def compute_expected_log_lik(mean, var, y_batch, log_lik_fn):
+    """
+    Computes the expected log likelihood under the variational approximation.
+
+    Args:
+        mean: The marginal means at each of the data points.
+        var: The marginal variance at each of the data points.
+        y_batch: The data values at the data points.
+        log_lik_fn: The likelihood. It must take two positional arguments,
+            y and f.
+
+    Returns:
+        The expected likelihood under the approximation.
+    """
 
     individual_expectations = expectation(y_batch, var, mean, log_lik_fn)
 
@@ -55,6 +101,20 @@ def compute_expected_log_lik(mean, var, y_batch, log_lik_fn):
 
 
 def compute_kl_term(m, L, Z, kern_fn):
+    """
+    Computes the KL term between a zero-mean prior and the variational
+    approximation.
+
+    Args:
+        m: The means of the variational approximation.
+        L: The Cholesky factor of the variational covariance.
+        Z: The inducing point locations.
+        kern_fn: The kernel function to use.
+
+    Returns:
+        The KL divergence between the approximation q[u] and the prior p[u],
+        assuming a zero-mean prior.
+    """
 
     # For the log lik, we need q(u) and p(u).
     p_u_mean = tf.zeros_like(m)
@@ -81,6 +141,7 @@ def compute_objective(x, y, m, L, Z, log_lik_fn, kern_fn):
 
 
 def extract_params(theta, n_inducing, square_kern_params=True):
+    # TODO: Not sure this should be in the library.
 
     # Get the parameters
     m = theta[:n_inducing]
