@@ -1,4 +1,5 @@
 import numpy as np
+import tensorflow as tf
 
 
 def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
@@ -14,3 +15,8 @@ def get_initial_values_from_kernel(inducing_pts, kernel_fun, lo_tri=True):
     else:
 
         return kmm.reshape(-1)
+
+
+def compute_diagonal_matmul(M1, M2, M3):
+
+    return tf.einsum('ik,kl,li->i', M1, M2, M3)

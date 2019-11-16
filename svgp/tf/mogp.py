@@ -6,6 +6,11 @@ from svgp.tf.kl import normal_kl_1d
 from .config import DTYPE
 
 
+# TODO: The create_ls function seems to have benefited from being a
+# tf.function. Maybe some of the others in this file might, too?
+
+
+@tf.function
 def create_ls(elements, n_inducing, n_latent):
     """Creates the individual Cholesky factors L for each of the latent
     GPs in the MOGP.
