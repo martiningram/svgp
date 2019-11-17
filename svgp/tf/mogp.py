@@ -11,28 +11,27 @@ from .config import DTYPE
 
 
 @tf.function
-def create_ls(elements, n_inducing, n_latent):
-    """Creates the individual Cholesky factors L for each of the latent
-    GPs in the MOGP.
+def create_ls(elements, mat_size, n_latent):
+    """Creates Cholesky factors L from their elements.
 
     Args:
         elements: An array of shape [n_latent x T], where T is the number of
-            triangular elements in the Cholesky factor L of size [n_inducing x
-            n_inducing].
-        n_inducing: The number of inducing points.
-        n_latent: The number of latent GPs in the MOGP.
+            triangular elements in the Cholesky factor L of size [mat_size x
+            mat_size].
+        mat_size: The dimension of each of the latent Ls.
+        n_latent: The number of Ls.
 
     Returns:
         A tensor of shape [n_latent x n_inducing x n_inducing] containing
-        the Cholesky factors of each GP in the MOGP.
+        the Cholesky factors.
     """
 
     Ls = list()
 
     for i in range(n_latent):
 
-        indices = np.array(np.tril_indices(n_inducing)).T
-        L = tf.scatter_nd(indices, elements[i], (n_inducing, n_inducing))
+        indices = np.array(np.tril_indices(mat_size)).T
+        L = tf.scatter_nd(indices, elements[i], (mat_size, mat_size))
         Ls.append(L)
 
     return tf.stack(Ls)
