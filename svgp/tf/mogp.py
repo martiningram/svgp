@@ -10,7 +10,7 @@ from .config import DTYPE
 # tf.function. Maybe some of the others in this file might, too?
 
 
-@tf.function
+@tf.compat.v2.function
 def create_ls(elements, mat_size, n_latent):
     """Creates Cholesky factors L from their elements.
 

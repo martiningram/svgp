@@ -125,6 +125,9 @@ def compute_kl_term(m, L, Z, kern_fn):
 
     kl = mvn_kl(q_u_mean, q_u_cov, p_u_mean, p_u_cov)
 
+    if tf.math.is_nan(kl):
+        import ipdb; ipdb.set_trace()
+
     return kl
 
 

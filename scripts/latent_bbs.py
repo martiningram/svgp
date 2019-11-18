@@ -1,5 +1,6 @@
 from sdm_ml.dataset import BBSDataset
 import tensorflow as tf
+tf.compat.v1.enable_eager_execution()
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from svgp.tf.utils import get_initial_values_from_kernel
@@ -15,6 +16,7 @@ from svgp.tf.mogp import (project_latents, create_ls, compute_mogp_kl_term,
                           calculate_approximate_means_and_vars)
 from ml_tools.normals import covar_to_corr
 from scipy.optimize import minimize
+from svgp.tf.config import JITTER
 
 
 def get_data(n_inducing, n_latent, seed=2):
@@ -27,11 +29,12 @@ def get_data(n_inducing, n_latent, seed=2):
     X = dataset.training_set.covariates
     y = dataset.training_set.outcomes
 
-    subset = np.random.choice(X.shape[0], size=100, replace=False)
-    X = X.iloc[subset]
-    y = y.iloc[subset]
+    # subset = np.random.choice(X.shape[0], size=100, replace=False)
+    # X = X.iloc[subset]
+    # y = y.iloc[subset]
 
-    species_subset = np.random.choice(y.columns, size=32, replace=False)
+    # species_subset = np.random.choice(y.columns, size=32, replace=False)
+    species_subset = y.columns
     y = y[species_subset]
 
     X = X.values
@@ -45,14 +48,16 @@ def get_data(n_inducing, n_latent, seed=2):
     Z = k_means.cluster_centers_
     Z = np.tile(Z, (n_latent, 1, 1))
 
-    return X, y, Z, scaler
+    return X, y, Z, scaler, species_subset
 
 
-n_inducing = 20
-n_latent = 4
+n_inducing = 100
+n_latent = 12
 n_latent_site = 4
+test_run = False
+extra_args = {'options': {'maxiter': 10}} if test_run else {}
 
-X, y, Z, scaler = get_data(n_inducing, n_latent, seed=2)
+X, y, Z, scaler, species = get_data(n_inducing, n_latent, seed=2)
 
 n_cov = X.shape[1]
 n_species = y.shape[1]
@@ -71,10 +76,12 @@ def get_mogp_initial_values(n_cov, n_latent, n_inducing):
 
     start_lscales = tf.random.uniform((n_latent, n_cov), minval=np.sqrt(2),
                                       maxval=np.sqrt(4))
-    start_alphas = tf.random.uniform((n_latent,), minval=0.1, maxval=1.)
+    # start_alphas = tf.random.uniform((n_latent,), minval=0.1, maxval=1.)
+    start_alphas = tf.ones((n_latent,)) * tf.sqrt(0.1)
 
-    start_kerns = [partial(matern_kernel_32, alpha=alpha, lengthscales=lscale)
-                   for alpha, lscale in zip(start_alphas**2, start_lscales**2)]
+    start_kerns = [partial(matern_kernel_32, alpha=alpha, lengthscales=lscale,
+                           jitter=JITTER)
+                   for alpha, lscale in zip(start_alphas, start_lscales**2)]
 
     w_means = tf.random.normal((n_latent, n_species), stddev=0.01)
     w_vars = tf.ones((n_latent, n_species))
@@ -115,6 +122,7 @@ def compute_objective(X, y, Z, env_ms, env_Ls, ks, w_means, w_vars,
 
     # Latent
     site_covs = site_ls @ tf.transpose(site_ls, (0, 2, 1))
+    site_covs = site_covs + tf.eye(site_prior_cov.shape[0]) * JITTER
     res_means = site_means @ b_mat
 
     # Trick to get diagonal only
@@ -136,6 +144,9 @@ def compute_objective(X, y, Z, env_ms, env_Ls, ks, w_means, w_vars,
 
     total_kl = res_kl + mogp_kl
 
+    if tf.math.is_nan(lik) or tf.math.is_nan(total_kl):
+        import ipdb; ipdb.set_trace()
+
     return lik - total_kl
 
 
@@ -150,7 +161,6 @@ start_theta, summary = flatten_and_summarise_tf(**{
     'env_ms': ms,
     'env_l_elts': tf.stack(init_ls),
     'lscales': lscales,
-    'alphas': alphas,
     'w_means': w_means,
     'w_vars': w_vars,
     'site_means': site_means,
@@ -164,20 +174,24 @@ def to_minimize(x):
     theta = reconstruct_tf(x, summary)
 
     # TODO: Check initial values are still consistent here
-    kerns = [partial(matern_kernel_32, alpha=alpha, lengthscales=lscale) for
-             alpha, lscale in zip(theta['alphas']**2, theta['lscales']**2)]
+    kerns = [partial(matern_kernel_32, alpha=alpha, lengthscales=lscale,
+                     jitter=JITTER) for
+             alpha, lscale in zip(alphas, theta['lscales']**2)]
 
     site_ls = create_ls(theta['site_l_elts'], n_latent_site, n_sites)
     env_ls = create_ls(theta['env_l_elts'], n_inducing, n_latent)
 
     objective = compute_objective(
         X, y, Z, theta['env_ms'], env_ls, kerns, theta['w_means'],
-        theta['w_vars'], w_prior_mean, w_prior_var, site_prior_mean,
+        theta['w_vars']**2, w_prior_mean, w_prior_var, site_prior_mean,
         site_prior_cov, theta['site_means'], site_ls, theta['b_mat'])
 
     cur_corr_mat = tf.transpose(theta['b_mat']) @ theta['b_mat']
 
     print(np.round(covar_to_corr(cur_corr_mat.numpy()), 2))
+
+    if tf.math.is_nan(objective):
+        import ipdb; ipdb.set_trace()
 
     return -objective
 
@@ -200,9 +214,14 @@ def to_minimize_with_grad(x):
             grad.numpy().astype(np.float64))
 
 
+
 result = minimize(to_minimize_with_grad, start_theta, jac=True,
-                  method='L-BFGS-B')
+                  method='L-BFGS-B', **extra_args)
 
 final_theta = reconstruct_tf(result.x, summary)
 
-np.savez('final_theta', **{x: y.numpy() for x, y in final_theta.items()})
+np.savez('final_theta_full_fix_alpha_test', Z=Z, alphas=alphas.numpy(),
+         species_subset=species, scaler_mean=scaler.mean_,
+         scaler_scale=scaler.scale_, n_inducing=n_inducing,
+         n_latent=n_latent, n_latent_site=n_latent_site,
+         **{x: y.numpy() for x, y in final_theta.items()})
