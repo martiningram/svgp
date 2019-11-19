@@ -1,6 +1,6 @@
 from sdm_ml.dataset import BBSDataset
 import tensorflow as tf
-tf.compat.v1.enable_eager_execution()
+import tensorflow_probability as tfp
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from svgp.tf.utils import get_initial_values_from_kernel
@@ -16,8 +16,15 @@ from svgp.tf.mogp import (project_latents, create_ls, compute_mogp_kl_term,
                           calculate_approximate_means_and_vars)
 from ml_tools.normals import covar_to_corr
 from scipy.optimize import minimize
-from svgp.tf.config import JITTER
+from svgp.tf.config import JITTER, DTYPE
 
+
+# More ideas to try:
+# Independent approximating distribution for site latents, to allow larger
+# number
+# In that case, I can also do the moment-matching trick to get variances on
+# b_mat
+# I could try to optimise some of the priors
 
 def get_data(n_inducing, n_latent, seed=2):
 
@@ -53,7 +60,7 @@ def get_data(n_inducing, n_latent, seed=2):
 
 n_inducing = 100
 n_latent = 12
-n_latent_site = 4
+n_latent_site = 8
 test_run = False
 extra_args = {'options': {'maxiter': 10}} if test_run else {}
 
@@ -165,7 +172,8 @@ start_theta, summary = flatten_and_summarise_tf(**{
     'w_vars': w_vars,
     'site_means': site_means,
     'site_l_elts': site_l_elts,
-    'b_mat': b_mat
+    'b_mat': b_mat,
+    'Z': tf.Variable(Z, dtype=DTYPE)
 })
 
 
@@ -182,11 +190,19 @@ def to_minimize(x):
     env_ls = create_ls(theta['env_l_elts'], n_inducing, n_latent)
 
     objective = compute_objective(
-        X, y, Z, theta['env_ms'], env_ls, kerns, theta['w_means'],
+        X, y, theta['Z'], theta['env_ms'], env_ls, kerns, theta['w_means'],
         theta['w_vars']**2, w_prior_mean, w_prior_var, site_prior_mean,
         site_prior_cov, theta['site_means'], site_ls, theta['b_mat'])
 
     cur_corr_mat = tf.transpose(theta['b_mat']) @ theta['b_mat']
+
+    lengthscale_prior = tf.reduce_sum(tfp.distributions.Gamma(3, 3).log_prob(
+        theta['lscales']**2))
+
+    b_mat_prior = tf.reduce_sum(tfp.distributions.Normal(0, 0.1).log_prob(
+        theta['b_mat']))
+
+    objective += lengthscale_prior + b_mat_prior
 
     print(np.round(covar_to_corr(cur_corr_mat.numpy()), 2))
 
@@ -220,7 +236,8 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_theta = reconstruct_tf(result.x, summary)
 
-np.savez('final_theta_full_fix_alpha_test', Z=Z, alphas=alphas.numpy(),
+np.savez('final_theta_stronger_0.1_prior_on_bmat',
+         alphas=alphas.numpy(),
          species_subset=species, scaler_mean=scaler.mean_,
          scaler_scale=scaler.scale_, n_inducing=n_inducing,
          n_latent=n_latent, n_latent_site=n_latent_site,
