@@ -69,6 +69,7 @@ X, y, Z, scaler, species = get_data(n_inducing, n_latent, seed=2)
 n_cov = X.shape[1]
 n_species = y.shape[1]
 n_sites = X.shape[0]
+latent_diag_only = True
 
 w_prior_mean = tf.constant(0.)
 w_prior_var = tf.constant(1.)
@@ -100,11 +101,16 @@ def get_mogp_initial_values(n_cov, n_latent, n_inducing):
             init_ls)
 
 
-def get_latent_initial_values(n_latent_site):
+def get_latent_initial_values(n_latent_site, diag_only=True):
 
     site_start_cov = np.eye(n_latent_site)
-    site_start_elts = tf.Variable(
-        site_start_cov[np.tril_indices_from(site_start_cov)], dtype=tf.float32)
+
+    if diag_only:
+        site_start_elts = tf.ones(n_latent_site)
+    else:
+        site_start_elts = tf.Variable(
+            site_start_cov[np.tril_indices_from(site_start_cov)],
+            dtype=tf.float32)
 
     site_means = tf.zeros((n_sites, n_latent_site))
     site_l_elts = rep_vector(site_start_elts, n_sites)
@@ -162,7 +168,8 @@ ms, lscales, alphas, kerns, w_means, w_vars, init_ls = get_mogp_initial_values(
     n_cov, n_latent, n_inducing)
 
 # Get the latent init values
-site_means, site_l_elts, b_mat = get_latent_initial_values(n_latent_site)
+site_means, site_l_elts, b_mat = get_latent_initial_values(
+    n_latent_site, diag_only=latent_diag_only)
 
 start_theta, summary = flatten_and_summarise_tf(**{
     'env_ms': ms,
@@ -186,7 +193,11 @@ def to_minimize(x):
                      jitter=JITTER) for
              alpha, lscale in zip(alphas, theta['lscales']**2)]
 
-    site_ls = create_ls(theta['site_l_elts'], n_latent_site, n_sites)
+    if not latent_diag_only:
+        site_ls = create_ls(theta['site_l_elts'], n_latent_site, n_sites)
+    else:
+        site_ls = tf.linalg.diag(theta['site_l_elts'])
+
     env_ls = create_ls(theta['env_l_elts'], n_inducing, n_latent)
 
     objective = compute_objective(
@@ -199,7 +210,7 @@ def to_minimize(x):
     lengthscale_prior = tf.reduce_sum(tfp.distributions.Gamma(3, 3).log_prob(
         theta['lscales']**2))
 
-    b_mat_prior = tf.reduce_sum(tfp.distributions.Normal(0, 0.1).log_prob(
+    b_mat_prior = tf.reduce_sum(tfp.distributions.Normal(0, 1.).log_prob(
         theta['b_mat']))
 
     objective += lengthscale_prior + b_mat_prior
@@ -236,7 +247,7 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_theta = reconstruct_tf(result.x, summary)
 
-np.savez('final_theta_stronger_0.1_prior_on_bmat',
+np.savez('final_theta_diag_site_l',
          alphas=alphas.numpy(),
          species_subset=species, scaler_mean=scaler.mean_,
          scaler_scale=scaler.scale_, n_inducing=n_inducing,
