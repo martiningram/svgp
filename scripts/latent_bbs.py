@@ -180,13 +180,19 @@ start_theta, summary = flatten_and_summarise_tf(**{
     'site_means': site_means,
     'site_l_elts': site_l_elts,
     'b_mat': b_mat,
-    'Z': tf.Variable(Z, dtype=DTYPE)
+    'Z': tf.Variable(Z, dtype=DTYPE),
+    'w_prior_var': tf.reshape(w_prior_var, (-1,))
 })
 
 
 def to_minimize(x):
 
     theta = reconstruct_tf(x, summary)
+
+    # Try to optimise prior variance
+    w_prior_var = theta['w_prior_var'][0]**2
+
+    print(np.round(w_prior_var.numpy(), 2))
 
     # TODO: Check initial values are still consistent here
     kerns = [partial(matern_kernel_32, alpha=alpha, lengthscales=lscale,
@@ -247,7 +253,7 @@ result = minimize(to_minimize_with_grad, start_theta, jac=True,
 
 final_theta = reconstruct_tf(result.x, summary)
 
-np.savez('final_theta_diag_site_l',
+np.savez('final_theta_diag_site_l_optimise_prior_var',
          alphas=alphas.numpy(),
          species_subset=species, scaler_mean=scaler.mean_,
          scaler_scale=scaler.scale_, n_inducing=n_inducing,
