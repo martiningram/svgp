@@ -75,6 +75,9 @@ def project_latents(x, Z, ms, Ls, ks):
 
 
 def calculate_approximate_means_and_vars(m_proj, var_proj, w_means, w_sds):
+    # TODO: Write down exactly what this does. Also, it might be a misnomer
+    # since I think it does compute the exact means and vars, it's just
+    # that the product is non-Gaussian so they are an incomplete summary.
 
     M1 = tf.transpose(m_proj)
     M2 = w_means

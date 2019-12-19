@@ -1,6 +1,6 @@
 from sdm_ml.dataset import BBSDataset
 import tensorflow as tf
-tf.compat.v1.enable_eager_execution()
+import tensorflow_probability as tfp
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from svgp.tf.utils import get_initial_values_from_kernel
@@ -144,9 +144,6 @@ def compute_objective(X, y, Z, env_ms, env_Ls, ks, w_means, w_vars,
 
     total_kl = res_kl + mogp_kl
 
-    if tf.math.is_nan(lik) or tf.math.is_nan(total_kl):
-        import ipdb; ipdb.set_trace()
-
     return lik - total_kl
 
 
@@ -186,12 +183,12 @@ def to_minimize(x):
         theta['w_vars']**2, w_prior_mean, w_prior_var, site_prior_mean,
         site_prior_cov, theta['site_means'], site_ls, theta['b_mat'])
 
+    # Add a prior term
+
+    objective = objective +
+
     cur_corr_mat = tf.transpose(theta['b_mat']) @ theta['b_mat']
-
     print(np.round(covar_to_corr(cur_corr_mat.numpy()), 2))
-
-    if tf.math.is_nan(objective):
-        import ipdb; ipdb.set_trace()
 
     return -objective
 
@@ -212,7 +209,6 @@ def to_minimize_with_grad(x):
 
     return (cur_objective.numpy().astype(np.float64),
             grad.numpy().astype(np.float64))
-
 
 
 result = minimize(to_minimize_with_grad, start_theta, jac=True,
