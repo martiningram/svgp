@@ -16,6 +16,7 @@ from svgp.tf.config import DTYPE, JITTER
 from ml_tools.tensorflow import rep_matrix
 from svgp.tf.utils import get_initial_values_from_kernel
 from ml_tools.flattening import flatten_and_summarise, reconstruct_tf
+import tensorflow_probability as tfp
 
 
 # TODO: Add a prior function which takes in the dictionary of parameters
