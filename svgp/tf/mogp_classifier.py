@@ -34,8 +34,8 @@ class MOGPResult(NamedTuple):
 
 def get_kernel_funs(base_kern_fun, lscales):
 
-    kerns = [partial(base_kern_fun, lengthscales=cur_lscales, alpha=1.) for
-             cur_lscales in lscales]
+    kerns = [partial(base_kern_fun, lengthscales=cur_lscales,
+                     alpha=np.sqrt(0.1)) for cur_lscales in lscales]
 
     return kerns
 
@@ -94,6 +94,7 @@ def fit(X: np.ndarray,
         kernel: str = 'matern_3/2',
         kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
         bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        w_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
         random_seed: int = 2) \
         -> MOGPResult:
 
@@ -146,6 +147,7 @@ def fit(X: np.ndarray,
 
     lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
+    w_var_prior = tfp.distributions.Gamma(*w_variance_prior)
 
     # TODO: Think about priors for W?
 
@@ -169,7 +171,7 @@ def fit(X: np.ndarray,
 
             print(lscales)
             print(intercept_prior_var)
-            print(theta['intercept_means'])
+            print(w_prior_var)
 
             Ls = create_ls(theta['L_elts'], n_inducing, n_latent)
 
@@ -189,6 +191,7 @@ def fit(X: np.ndarray,
             objective = objective - (
                 tf.reduce_sum(lscale_prior.log_prob(lscales))
                 + bias_var_prior.log_prob(intercept_prior_var)
+                + w_var_prior.log_prob(w_prior_var)
             )
 
             grad = tape.gradient(objective, x_tf)
