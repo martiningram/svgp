@@ -15,7 +15,6 @@ from .sogp_classifier import kern_lookup
 from .mogp import (create_ls, compute_mogp_kl_term, project_latents,
                    calculate_approximate_means_and_vars, expectation)
 from .kl import normal_kl_1d
-from .config import DTYPE
 
 
 # TODO: Maybe enforce that this is immutable somehow?
@@ -81,20 +80,6 @@ def compute_predictions(X, Z, ms, Ls, ks, w_means, w_vars, intercept_means,
     var_out = var_out + intercept_vars
 
     return m_out, var_out
-
-
-def predict_f_samples(X, Z, ms, Ls, ks, w_means, w_vars, intercept_means,
-                      intercept_vars, n_samples=1000):
-
-    # Project the latents
-    m_proj, var_proj = project_latents(X, Z, ms, Ls, ks)
-
-    # Draw samples from these
-    latent_draws = np.random.normal(
-        m_proj, np.sqrt(var_proj), size=(n_samples, m_proj.shape[0],
-                                         m_proj.shape[1]))
-
-    return latent_draws
 
 
 def compute_likelihood_term(X, y, Z, ms, Ls, ks, w_means, w_vars,
@@ -283,6 +268,53 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
     )
 
     return pred_mean.numpy(), np.sqrt(pred_var)
+
+
+def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
+
+    # TODO: There's a bit of duplication here. Maybe fix.
+    n_inducing = fit_result.mu.shape[1]
+    n_latent = fit_result.mu.shape[0]
+
+    base_kern = kern_lookup[fit_result.kernel]
+
+    k_funs = get_kernel_funs(base_kern,
+                             fit_result.lengthscales.astype(np.float32))
+
+    L = create_ls(fit_result.L_elts.astype(np.float32), n_inducing,
+                  n_latent)
+
+    # Project the latents
+    m_proj, var_proj = project_latents(
+        X_new, fit_result.Z.astype(np.float32),
+        fit_result.mu.astype(np.float32), L, k_funs)
+
+    # Draw samples from these
+    # TODO: Will this get too memory-heavy?
+    latent_draws = np.random.normal(
+        m_proj, np.sqrt(var_proj), size=(n_samples, m_proj.shape[0],
+                                         m_proj.shape[1]))
+
+    w_means = fit_result.w_means
+    w_vars = fit_result.w_vars
+
+    for cur_site in range(latent_draws.shape[-1]):
+
+        site_latent_draws = latent_draws[..., cur_site]
+
+        site_w_draws = np.random.normal(w_means, np.sqrt(w_vars), size=(
+            n_samples, w_means.shape[0], w_means.shape[1]))
+
+        intercept_draws = np.random.normal(
+            fit_result.intercept_means, np.sqrt(fit_result.intercept_vars),
+            size=(n_samples, fit_result.intercept_means.shape[0]))
+
+        cur_preds = np.einsum('ij,ijk->ik', site_latent_draws, site_w_draws)
+
+        # Add intercept
+        cur_preds += intercept_draws
+
+        yield cur_preds
 
 
 def predict_probs(fit_result: MOGPResult, X_new: np.ndarray,
