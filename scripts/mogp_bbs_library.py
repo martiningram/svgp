@@ -21,9 +21,9 @@ x = scaler.fit_transform(cov_df.values)
 y = out_df.values
 
 n_inducing = 100
-n_latent = 10
+n_latent = 24
 
-result = fit(x, y, n_inducing, n_latent)
+result = fit(x, y, n_inducing, n_latent, random_seed=3)
 dict_version = result._asdict()
 
-np.savez('mogp_fit_library_wvar_prior', **dict_version)
+np.savez('mogp_fit_library_hierarchical_new_priors_24_seed_3', **dict_version)

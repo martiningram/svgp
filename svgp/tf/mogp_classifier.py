@@ -27,23 +27,29 @@ class MOGPResult(NamedTuple):
     lengthscales: np.ndarray
     intercept_means: np.float64
     intercept_vars: np.float64
-    w_means: np.float64
-    w_vars: np.float64
+    w_means: np.ndarray
+    w_vars: np.ndarray
     Z: np.ndarray
+    w_prior_means: np.ndarray
+    w_prior_vars: np.ndarray
+    intercept_prior_mean: np.float64
+    intercept_prior_var: np.float64
 
 
 def get_kernel_funs(base_kern_fun, lscales):
 
     kerns = [partial(base_kern_fun, lengthscales=cur_lscales,
-                     alpha=np.sqrt(0.1)) for cur_lscales in lscales]
+                     alpha=np.sqrt(0.6)) for cur_lscales in
+             lscales]
 
     return kerns
 
 
-def compute_intercept_kl(intercept_means, intercept_vars, intercept_prior_var):
+def compute_intercept_kl(intercept_means, intercept_vars, intercept_prior_mean,
+                         intercept_prior_var):
 
     kl = normal_kl_1d(
-        intercept_means, intercept_vars, tf.constant(0., dtype=DTYPE),
+        intercept_means, intercept_vars, intercept_prior_mean,
         intercept_prior_var
     )
 
@@ -51,9 +57,11 @@ def compute_intercept_kl(intercept_means, intercept_vars, intercept_prior_var):
 
 
 def compute_kl_term(ms, Ls, ks, Z, w_means, w_vars, w_prior_mean, w_prior_var,
-                    intercept_means, intercept_vars, intercept_prior_var):
+                    intercept_means, intercept_vars, intercept_prior_mean,
+                    intercept_prior_var):
 
     intercept_kl = compute_intercept_kl(intercept_means, intercept_vars,
+                                        intercept_prior_mean,
                                         intercept_prior_var)
 
     mogp_kl = compute_mogp_kl_term(ms, Ls, ks, Z, w_means, w_vars,
@@ -75,6 +83,20 @@ def compute_predictions(X, Z, ms, Ls, ks, w_means, w_vars, intercept_means,
     return m_out, var_out
 
 
+def predict_f_samples(X, Z, ms, Ls, ks, w_means, w_vars, intercept_means,
+                      intercept_vars, n_samples=1000):
+
+    # Project the latents
+    m_proj, var_proj = project_latents(X, Z, ms, Ls, ks)
+
+    # Draw samples from these
+    latent_draws = np.random.normal(
+        m_proj, np.sqrt(var_proj), size=(n_samples, m_proj.shape[0],
+                                         m_proj.shape[1]))
+
+    return latent_draws
+
+
 def compute_likelihood_term(X, y, Z, ms, Ls, ks, w_means, w_vars,
                             intercept_means, intercept_vars):
 
@@ -93,8 +115,9 @@ def fit(X: np.ndarray,
         n_latent: int = 10,
         kernel: str = 'matern_3/2',
         kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
-        bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
-        w_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        bias_variance_prior: Tuple[float, float] = (0.5, 2),
+        w_variance_prior: Tuple[float, float] = (0.5, 2),
+        bias_mean_prior: Tuple[float, float] = (0, 1),
         random_seed: int = 2) \
         -> MOGPResult:
 
@@ -120,7 +143,8 @@ def fit(X: np.ndarray,
     ])
 
     init_ms = np.zeros((n_latent, n_inducing))
-    w_prior_var_init = np.array(0.1)
+    w_prior_var_init = np.ones((n_latent, 1)) * 1.
+    w_prior_mean_init = np.zeros((n_latent, 1))
 
     start_intercept_means = np.zeros(n_out)
     start_intercept_var = np.ones(n_out)
@@ -130,9 +154,11 @@ def fit(X: np.ndarray,
         'L_elts': init_Ls,
         'mu': init_ms,
         'w_prior_var': w_prior_var_init,
+        'w_prior_mean': w_prior_mean_init,
         'intercept_means': start_intercept_means,
         'intercept_vars': start_intercept_var,
         'intercept_prior_var': intercept_prior_var_init,
+        'intercept_prior_mean': np.array(0.),
         'w_means': np.random.randn(n_latent, n_out) * 0.01,
         'w_vars': np.ones((n_latent, n_out)),
         'lscales': np.sqrt(start_lengthscales),
@@ -143,11 +169,11 @@ def fit(X: np.ndarray,
 
     X = tf.constant(X.astype(np.float32))
     y = tf.constant(y.astype(np.float32))
-    w_prior_mean = tf.constant(0., dtype=DTYPE)
 
     lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
     w_var_prior = tfp.distributions.Gamma(*w_variance_prior)
+    bias_m_prior = tfp.distributions.Normal(*bias_mean_prior)
 
     # TODO: Think about priors for W?
 
@@ -172,15 +198,19 @@ def fit(X: np.ndarray,
             print(lscales)
             print(intercept_prior_var)
             print(w_prior_var)
+            print(theta['w_prior_mean'])
+            print(theta['intercept_prior_mean'])
 
             Ls = create_ls(theta['L_elts'], n_inducing, n_latent)
 
             kern_funs = get_kernel_funs(kernel_fun, lscales)
 
             kl = compute_kl_term(theta['mu'], Ls, kern_funs, theta['Z'],
-                                 theta['w_means'], w_vars, w_prior_mean,
-                                 w_prior_var, theta['intercept_means'],
-                                 intercept_vars, intercept_prior_var)
+                                 theta['w_means'], w_vars,
+                                 theta['w_prior_mean'], w_prior_var,
+                                 theta['intercept_means'], intercept_vars,
+                                 theta['intercept_prior_mean'],
+                                 intercept_prior_var)
 
             lik = compute_likelihood_term(
                 X, y, theta['Z'], theta['mu'], Ls, kern_funs, theta['w_means'],
@@ -191,7 +221,8 @@ def fit(X: np.ndarray,
             objective = objective - (
                 tf.reduce_sum(lscale_prior.log_prob(lscales))
                 + bias_var_prior.log_prob(intercept_prior_var)
-                + w_var_prior.log_prob(w_prior_var)
+                + tf.reduce_sum(w_var_prior.log_prob(w_prior_var))
+                + bias_m_prior.log_prob(theta['intercept_prior_mean'])
             )
 
             grad = tape.gradient(objective, x_tf)
@@ -202,7 +233,7 @@ def fit(X: np.ndarray,
                 grad.numpy().astype(np.float64))
 
     result = minimize(to_minimize_with_grad, flat_theta, jac=True,
-                      method='L-BFGS-B')
+                      method='L-BFGS-B', tol=1)
 
     final_theta = reconstruct_tf(result.x, summary)
     final_theta = {x: y.numpy() for x, y in final_theta.items()}
@@ -217,7 +248,12 @@ def fit(X: np.ndarray,
         intercept_vars=final_theta['intercept_vars']**2,
         w_means=final_theta['w_means'],
         w_vars=final_theta['w_vars']**2,
-        Z=final_theta['Z'])
+        Z=final_theta['Z'],
+        w_prior_means=final_theta['w_prior_mean'],
+        w_prior_vars=final_theta['w_prior_var']**2,
+        intercept_prior_mean=final_theta['intercept_prior_mean'],
+        intercept_prior_var=final_theta['intercept_prior_var']**2
+    )
 
     return fit_result
 
@@ -277,9 +313,14 @@ def save_results(fit_result: MOGPResult, target_file: str):
     np.savez(target_file, **dict_version)
 
 
-def load_results(file_to_load: str):
+def restore_results(result_dict) -> MOGPResult:
 
-    loaded = np.load(file_to_load)
-    dict_version = {x: loaded[x] for x in loaded.keys()}
+    # Make sure this is definitely a dict
+    dict_version = {x: result_dict[x] for x in result_dict.keys()}
+
+    # Make sure kernel is a string
     dict_version['kernel'] = str(dict_version['kernel'])
-    return MOGPResult(**dict_version)
+
+    # Make results
+    return MOGPResult(**{x: y for x, y in dict_version.items() if x in
+                         MOGPResult._fields})
