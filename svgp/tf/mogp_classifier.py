@@ -1,7 +1,6 @@
 # This is a convenience module to quickly and easily fit MOGP models.
 # It's a bit experimental!
 from typing import NamedTuple, Tuple
-from scipy.stats import norm
 import tensorflow as tf
 import numpy as np
 import tensorflow_probability as tfp
@@ -15,6 +14,7 @@ from .sogp_classifier import kern_lookup
 from .mogp import (create_ls, compute_mogp_kl_term, project_latents,
                    calculate_approximate_means_and_vars, expectation)
 from .kl import normal_kl_1d
+from ml_tools.normals import normal_cdf_integral
 
 
 # TODO: Maybe enforce that this is immutable somehow?
@@ -218,7 +218,7 @@ def fit(X: np.ndarray,
                 grad.numpy().astype(np.float64))
 
     result = minimize(to_minimize_with_grad, flat_theta, jac=True,
-                      method='L-BFGS-B', tol=1)
+                      method='L-BFGS-B')
 
     final_theta = reconstruct_tf(result.x, summary)
     final_theta = {x: y.numpy() for x, y in final_theta.items()}
@@ -270,9 +270,8 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
     return pred_mean.numpy(), np.sqrt(pred_var)
 
 
-def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
+def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
-    # TODO: There's a bit of duplication here. Maybe fix.
     n_inducing = fit_result.mu.shape[1]
     n_latent = fit_result.mu.shape[0]
 
@@ -289,8 +288,14 @@ def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
         X_new, fit_result.Z.astype(np.float32),
         fit_result.mu.astype(np.float32), L, k_funs)
 
+    return m_proj, var_proj
+
+
+def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
+
+    m_proj, var_proj = predict_latent(fit_result, X_new)
+
     # Draw samples from these
-    # TODO: Will this get too memory-heavy?
     latent_draws = np.random.normal(
         m_proj, np.sqrt(var_proj), size=(n_samples, m_proj.shape[0],
                                          m_proj.shape[1]))
@@ -318,25 +323,12 @@ def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
 
 
 def predict_probs(fit_result: MOGPResult, X_new: np.ndarray,
-                  n_draws: int = 1000):
-
-    n_data = X_new.shape[0]
-    n_out = fit_result.w_vars.shape[1]
-    all_probs = np.zeros((n_data, n_out))
+                  log: bool = False):
 
     pred_mean, pred_var = predict(fit_result, X_new)
     pred_sd = np.sqrt(pred_var)
 
-    for i, (cur_means, cur_sds) in enumerate(zip(pred_mean.T, pred_sd.T)):
-
-        cur_draws = np.random.normal(cur_means, cur_sds,
-                                     size=(n_draws, n_data))
-        probs = norm.cdf(cur_draws)
-        probs = np.mean(probs, axis=0)
-
-        all_probs[:, i] = probs
-
-    return all_probs
+    return normal_cdf_integral(pred_mean, pred_sd, log=log)
 
 
 def save_results(fit_result: MOGPResult, target_file: str):
