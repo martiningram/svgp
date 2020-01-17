@@ -142,7 +142,7 @@ def fit(X: np.ndarray,
         lscale_prior = tfp.distributions.Gamma(3, 1/3).log_prob(
             theta['lengthscales']**2)
 
-        return cur_objective - tf.reduce_sum(lscale_prior)
+        return cur_objective + tf.reduce_sum(lscale_prior)
 
     def to_minimize(flat_theta):
 
