@@ -12,9 +12,13 @@ from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
 from .config import JITTER
 from .likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
+from ml_tools.normals import normal_cdf_integral
+import tensorflow_probability as tfp
 
 # TODO: There is lots of duplication with mogp_classifier here. Maybe I can do
 # better.
+# TODO: Add priors (maybe can come up with a shared API?); add intercept
+# (same).
 
 
 class CorrelatedMOGPResult(NamedTuple):
@@ -130,7 +134,11 @@ def fit(X: np.ndarray,
             theta['w_prior_mean'], w_prior_cov
         )
 
-        return cur_objective
+        # Add prior
+        lscale_prior = tfp.distributions.Gamma(3, 1/3).log_prob(
+            theta['lengthscales']**2)
+
+        return cur_objective - tf.reduce_sum(lscale_prior)
 
     def to_minimize(flat_theta):
 
@@ -170,3 +178,33 @@ def fit(X: np.ndarray,
         w_prior_means=final_theta['w_prior_mean'].numpy(),
         w_prior_cov=w_prior_cov.numpy()
     )
+
+
+def predict(fit_result: CorrelatedMOGPResult, X_new: np.ndarray):
+
+    n_inducing = fit_result.mu.shape[1]
+    n_latent = fit_result.mu.shape[0]
+
+    base_kern = kern_lookup[fit_result.kernel]
+
+    k_funs = get_kernel_funs(
+        base_kern, fit_result.lengthscales.astype(np.float32))
+
+    pred_means, pred_vars = corr_mogp.compute_site_means_and_vars(
+        X_new.astype(np.float32), fit_result.Z.astype(np.float32),
+        fit_result.mu.astype(np.float32),
+        fit_result.Ls.astype(np.float32),
+        k_funs,
+        tf.constant(fit_result.w_means.astype(np.float32)),
+        tf.constant(fit_result.w_cov.astype(np.float32)))
+
+    return pred_means, pred_vars
+
+
+def predict_probs(fit_result: CorrelatedMOGPResult, X_new: np.ndarray,
+                  log: bool = False):
+
+    pred_mean, pred_var = predict(fit_result, X_new)
+    pred_sd = np.sqrt(pred_var)
+
+    return normal_cdf_integral(pred_mean, pred_sd, log=log)
