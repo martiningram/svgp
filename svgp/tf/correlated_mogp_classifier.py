@@ -12,6 +12,7 @@ from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
 from .config import JITTER
 from .likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
+from ml_tools.normals import covar_to_corr
 
 # TODO: There is lots of duplication with mogp_classifier here. Maybe I can do
 # better.
@@ -122,6 +123,9 @@ def fit(X: np.ndarray,
 
         w_covs, Ls, w_prior_cov = extract_cov_matrices(theta)
 
+        print(np.round(covar_to_corr(w_prior_cov.numpy()), 2))
+        print(np.round(theta['lengthscales'].numpy()**2, 2))
+
         kernel_funs = get_kernel_funs(kernel_fun, theta['lengthscales']**2)
 
         cur_objective = corr_mogp.compute_default_objective(
@@ -153,7 +157,7 @@ def fit(X: np.ndarray,
                 grad.numpy().astype(np.float64))
 
     result = minimize(to_minimize, flat_start_theta, jac=True,
-                      method='L-BFGS-B', tol=1)
+                      method='L-BFGS-B')
 
     final_theta = reconstruct_tf(result.x.astype(np.float32), summary)
 
