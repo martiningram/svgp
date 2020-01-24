@@ -99,9 +99,8 @@ def fit(X: np.ndarray,
         n_inducing: int = 100,
         n_latent: int = 10,
         kernel: str = 'matern_3/2',
-        # Inverse gamma prior:
-        kernel_lengthscale_prior: Tuple[float, float] = (5, 5),
-        # Gamma priors:
+        # Gamma priors (note tfp uses "concentration rate" parameterisation):
+        kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
         bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
         w_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
         # Normal priors
@@ -159,8 +158,7 @@ def fit(X: np.ndarray,
     X = tf.constant(X.astype(np.float32))
     y = tf.constant(y.astype(np.float32))
 
-    lscale_prior = tfp.distributions.InverseGamma(*kernel_lengthscale_prior)
-
+    lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
     w_var_prior = tfp.distributions.Gamma(*w_variance_prior)
 
