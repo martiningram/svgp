@@ -1,0 +1,214 @@
+import numpy as np
+import tensorflow as tf
+from typing import NamedTuple
+from .mogp_classifier import get_kernel_funs
+from svgp.tf.utils import get_initial_values_from_kernel
+from .sogp_classifier import kern_lookup
+from ml_tools.gp import find_starting_z
+import svgp.tf.mogp_correlated_weights as corr_mogp
+import svgp.tf.mogp as mogp
+from ml_tools.tensorflow import lo_tri_from_elements, rep_vector
+from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
+from .config import JITTER
+from .likelihoods import bernoulli_probit_lik
+from scipy.optimize import minimize
+from ml_tools.normals import covar_to_corr
+from ml_tools.normals import normal_cdf_integral
+import tensorflow_probability as tfp
+
+# TODO: There is lots of duplication with mogp_classifier here. Maybe I can do
+# better.
+# TODO: Add priors (maybe can come up with a shared API?); add intercept
+# (same).
+
+
+class CorrelatedMOGPResult(NamedTuple):
+
+    Ls: np.ndarray
+    mu: np.ndarray
+    kernel: str
+    lengthscales: np.ndarray
+    w_means: np.ndarray
+    w_cov: np.ndarray
+    Z: np.ndarray
+    w_prior_means: np.ndarray
+    w_prior_cov: np.ndarray
+
+
+def create_pos_def_mat_from_elts_batch(elements, mat_size, n_mats, jitter=JITTER):
+
+    ls = mogp.create_ls(elements, mat_size, n_mats)
+    pos_def = ls @ tf.transpose(ls, (0, 2, 1))
+    pos_def = pos_def + tf.expand_dims(tf.eye(mat_size) * jitter, axis=0)
+
+    return pos_def
+
+
+def create_pos_def_mat_from_elts(elements, mat_size, jitter=JITTER):
+
+    ls = lo_tri_from_elements(elements, mat_size)
+    pos_def = ls @ tf.transpose(ls)
+    pos_def = pos_def + tf.eye(mat_size) * jitter
+
+    return pos_def
+
+
+def fit(X: np.ndarray,
+        y: np.ndarray,
+        n_inducing: int = 100,
+        n_latent: int = 10,
+        kernel: str = 'matern_3/2',
+        random_seed: int = 2):
+
+    # TODO: This is copied from the mogp_classifier.
+    # Maybe instead make it a function of some sort?
+    np.random.seed(random_seed)
+
+    # Note that input _must_ be scaled. Some way to enforce that?
+    kernel_fun = kern_lookup[kernel]
+
+    n_cov = X.shape[1]
+    n_out = y.shape[1]
+
+    # Set initial values
+    start_lengthscales = np.random.uniform(2., 4., size=(n_latent, n_cov))
+
+    Z = find_starting_z(X, n_inducing)
+    Z = np.tile(Z, (n_latent, 1, 1))
+
+    start_kernel_funs = get_kernel_funs(kernel_fun,
+                                        np.sqrt(start_lengthscales))
+
+    init_Ls = np.stack([
+        get_initial_values_from_kernel(cur_z, cur_kernel_fun)
+        for cur_z, cur_kernel_fun in zip(Z, start_kernel_funs)
+    ])
+
+    init_ms = np.zeros((n_latent, n_inducing))
+
+    start_prior_cov = np.eye(n_latent)
+    start_prior_mean = np.zeros(n_latent)
+    start_prior_cov_elts = corr_mogp.get_initial_w_elements(
+        start_prior_mean, start_prior_cov, n_out)
+
+    start_w_cov_elts = rep_vector(start_prior_cov_elts, n_out)
+
+    init_w_means = np.random.randn(n_out, n_latent)
+
+    start_theta = {
+            'mu': init_ms,
+            'L_elts': init_Ls,
+            'w_means': init_w_means,
+            'w_cov_elts': start_w_cov_elts,
+            'lengthscales': start_lengthscales,
+            'w_prior_cov_elts': start_prior_cov_elts,
+            'w_prior_mean': start_prior_mean,
+            'Z': Z
+    }
+
+    flat_start_theta, summary = flatten_and_summarise_tf(**start_theta)
+
+    X_tf = tf.constant(X.astype(np.float32))
+    y_tf = tf.constant(y.astype(np.float32))
+
+    def extract_cov_matrices(theta):
+
+        w_covs = create_pos_def_mat_from_elts_batch(
+            theta['w_cov_elts'], n_latent, n_out, jitter=JITTER)
+
+        Ls = mogp.create_ls(theta['L_elts'], n_inducing, n_latent)
+
+        w_prior_cov = create_pos_def_mat_from_elts(
+            theta['w_prior_cov_elts'], n_latent, jitter=JITTER)
+
+        return w_covs, Ls, w_prior_cov
+
+    def calculate_objective(theta):
+
+        w_covs, Ls, w_prior_cov = extract_cov_matrices(theta)
+
+        print(np.round(covar_to_corr(w_prior_cov.numpy()), 2))
+        print(np.round(theta['lengthscales'].numpy()**2, 2))
+
+        kernel_funs = get_kernel_funs(kernel_fun, theta['lengthscales']**2)
+
+        cur_objective = corr_mogp.compute_default_objective(
+            X_tf, y_tf, theta['Z'], theta['mu'], Ls, theta['w_means'],
+            w_covs, kernel_funs, bernoulli_probit_lik,
+            theta['w_prior_mean'], w_prior_cov
+        )
+
+        # Add prior
+        lscale_prior = tfp.distributions.Gamma(3, 1/3).log_prob(
+            theta['lengthscales']**2)
+
+        return cur_objective + tf.reduce_sum(lscale_prior)
+
+    def to_minimize(flat_theta):
+
+        flat_theta = tf.constant(flat_theta)
+        flat_theta = tf.cast(flat_theta, tf.float32)
+
+        with tf.GradientTape() as tape:
+
+            tape.watch(flat_theta)
+
+            theta = reconstruct_tf(flat_theta, summary)
+
+            objective = -calculate_objective(theta)
+
+            grad = tape.gradient(objective, flat_theta)
+
+        print(objective, np.linalg.norm(grad.numpy()))
+
+        return (objective.numpy().astype(np.float64),
+                grad.numpy().astype(np.float64))
+
+    result = minimize(to_minimize, flat_start_theta, jac=True,
+                      method='L-BFGS-B')
+
+    final_theta = reconstruct_tf(result.x.astype(np.float32), summary)
+
+    w_covs, Ls, w_prior_cov = extract_cov_matrices(final_theta)
+
+    return CorrelatedMOGPResult(
+        Ls=Ls,
+        mu=final_theta['mu'].numpy(),
+        kernel=kernel,
+        lengthscales=final_theta['lengthscales'].numpy()**2,
+        w_means=final_theta['w_means'].numpy(),
+        w_cov=w_covs.numpy(),
+        Z=final_theta['Z'].numpy(),
+        w_prior_means=final_theta['w_prior_mean'].numpy(),
+        w_prior_cov=w_prior_cov.numpy()
+    )
+
+
+def predict(fit_result: CorrelatedMOGPResult, X_new: np.ndarray):
+
+    n_inducing = fit_result.mu.shape[1]
+    n_latent = fit_result.mu.shape[0]
+
+    base_kern = kern_lookup[fit_result.kernel]
+
+    k_funs = get_kernel_funs(
+        base_kern, fit_result.lengthscales.astype(np.float32))
+
+    pred_means, pred_vars = corr_mogp.compute_site_means_and_vars(
+        X_new.astype(np.float32), fit_result.Z.astype(np.float32),
+        fit_result.mu.astype(np.float32),
+        fit_result.Ls.astype(np.float32),
+        k_funs,
+        tf.constant(fit_result.w_means.astype(np.float32)),
+        tf.constant(fit_result.w_cov.astype(np.float32)))
+
+    return pred_means, pred_vars
+
+
+def predict_probs(fit_result: CorrelatedMOGPResult, X_new: np.ndarray,
+                  log: bool = False):
+
+    pred_mean, pred_var = predict(fit_result, X_new)
+    pred_sd = np.sqrt(pred_var)
+
+    return normal_cdf_integral(pred_mean, pred_sd, log=log)

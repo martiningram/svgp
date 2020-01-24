@@ -13,8 +13,7 @@ from svgp.tf.svgp import compute_qf_mean_cov
 from svgp.tf.svgp import compute_objective
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
-from ml_tools.tensorflow import lo_tri_from_elements
-from scipy.stats import norm
+from ml_tools.normals import normal_cdf_integral
 
 
 kern_lookup = {
@@ -48,8 +47,11 @@ def fit(X: np.ndarray,
         y: np.ndarray,
         n_inducing: int = 100,
         kernel: str = 'matern_3/2',
+        # Gamma prior
         kernel_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
-        kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
+        # Inverse Gamma prior
+        kernel_lengthscale_prior: Tuple[float, float] = (5, 5),
+        # Gamma prior
         bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
         random_seed: int = 2) \
         -> SOGPResult:
@@ -92,7 +94,7 @@ def fit(X: np.ndarray,
     X = tf.constant(X.astype(np.float32))
     y = tf.constant(y.astype(np.float32))
 
-    lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
+    lscale_prior = tfp.distributions.InverseGamma(*kernel_lengthscale_prior)
     kernel_var_prior = tfp.distributions.Gamma(*kernel_variance_prior)
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
 
@@ -172,16 +174,12 @@ def predict(fit_result: SOGPResult, X_new: np.ndarray):
 
 
 def predict_probs(fit_result: SOGPResult, X_new: np.ndarray,
-                  n_draws: int = 10000):
-
-    n_data = X_new.shape[0]
+                  log: bool = False):
 
     pred_mean, pred_var = predict(fit_result, X_new)
     pred_sd = np.sqrt(pred_var)
-    draws = np.random.normal(pred_mean, pred_sd, size=(n_draws, n_data))
-    probs = norm.cdf(draws)
 
-    return np.mean(probs, axis=0)
+    return normal_cdf_integral(pred_mean, pred_sd, log=log)
 
 
 def save_results(fit_result: SOGPResult, target_file: str):

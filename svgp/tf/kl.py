@@ -4,6 +4,7 @@ from ml_tools.tensorflow import rep_matrix
 
 
 def mvn_kl(mu_0, sigma_0, mu_1, sigma_1, is_batch=False):
+    # TODO: This is a bit vague. Explain that the prior is _not_ batched.
 
     logdet_sigma_1 = tf.linalg.logdet(sigma_1)
     logdet_sigma_0 = tf.linalg.logdet(sigma_0)

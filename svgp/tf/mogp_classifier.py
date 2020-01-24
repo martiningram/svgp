@@ -1,7 +1,6 @@
 # This is a convenience module to quickly and easily fit MOGP models.
 # It's a bit experimental!
 from typing import NamedTuple, Tuple
-from scipy.stats import norm
 import tensorflow as tf
 import numpy as np
 import tensorflow_probability as tfp
@@ -15,6 +14,7 @@ from .sogp_classifier import kern_lookup
 from .mogp import (create_ls, compute_mogp_kl_term, project_latents,
                    calculate_approximate_means_and_vars, expectation)
 from .kl import normal_kl_1d
+from ml_tools.normals import normal_cdf_integral
 
 
 # TODO: Maybe enforce that this is immutable somehow?
@@ -99,9 +99,13 @@ def fit(X: np.ndarray,
         n_inducing: int = 100,
         n_latent: int = 10,
         kernel: str = 'matern_3/2',
-        kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
-        bias_variance_prior: Tuple[float, float] = (0.5, 2),
-        w_variance_prior: Tuple[float, float] = (0.5, 2),
+        # Inverse gamma prior:
+        kernel_lengthscale_prior: Tuple[float, float] = (5, 5),
+        # Gamma priors:
+        bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        w_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        # Normal priors
+        w_mean_prior: Tuple[float, float] = (0, 1),
         bias_mean_prior: Tuple[float, float] = (0, 1),
         random_seed: int = 2) \
         -> MOGPResult:
@@ -155,9 +159,12 @@ def fit(X: np.ndarray,
     X = tf.constant(X.astype(np.float32))
     y = tf.constant(y.astype(np.float32))
 
-    lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
+    lscale_prior = tfp.distributions.InverseGamma(*kernel_lengthscale_prior)
+
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
     w_var_prior = tfp.distributions.Gamma(*w_variance_prior)
+
+    w_m_prior = tfp.distributions.Normal(*w_mean_prior)
     bias_m_prior = tfp.distributions.Normal(*bias_mean_prior)
 
     # TODO: Think about priors for W?
@@ -208,6 +215,7 @@ def fit(X: np.ndarray,
                 + bias_var_prior.log_prob(intercept_prior_var)
                 + tf.reduce_sum(w_var_prior.log_prob(w_prior_var))
                 + bias_m_prior.log_prob(theta['intercept_prior_mean'])
+                + tf.reduce_sum(w_m_prior.log_prob(theta['w_prior_mean']))
             )
 
             grad = tape.gradient(objective, x_tf)
@@ -270,9 +278,8 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
     return pred_mean.numpy(), np.sqrt(pred_var)
 
 
-def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
+def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
-    # TODO: There's a bit of duplication here. Maybe fix.
     n_inducing = fit_result.mu.shape[1]
     n_latent = fit_result.mu.shape[0]
 
@@ -289,8 +296,14 @@ def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
         X_new, fit_result.Z.astype(np.float32),
         fit_result.mu.astype(np.float32), L, k_funs)
 
+    return m_proj, var_proj
+
+
+def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
+
+    m_proj, var_proj = predict_latent(fit_result, X_new)
+
     # Draw samples from these
-    # TODO: Will this get too memory-heavy?
     latent_draws = np.random.normal(
         m_proj, np.sqrt(var_proj), size=(n_samples, m_proj.shape[0],
                                          m_proj.shape[1]))
@@ -318,25 +331,12 @@ def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
 
 
 def predict_probs(fit_result: MOGPResult, X_new: np.ndarray,
-                  n_draws: int = 1000):
-
-    n_data = X_new.shape[0]
-    n_out = fit_result.w_vars.shape[1]
-    all_probs = np.zeros((n_data, n_out))
+                  log: bool = False):
 
     pred_mean, pred_var = predict(fit_result, X_new)
     pred_sd = np.sqrt(pred_var)
 
-    for i, (cur_means, cur_sds) in enumerate(zip(pred_mean.T, pred_sd.T)):
-
-        cur_draws = np.random.normal(cur_means, cur_sds,
-                                     size=(n_draws, n_data))
-        probs = norm.cdf(cur_draws)
-        probs = np.mean(probs, axis=0)
-
-        all_probs[:, i] = probs
-
-    return all_probs
+    return normal_cdf_integral(pred_mean, pred_sd, log=log)
 
 
 def save_results(fit_result: MOGPResult, target_file: str):
