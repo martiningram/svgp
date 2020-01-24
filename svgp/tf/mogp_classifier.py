@@ -218,7 +218,7 @@ def fit(X: np.ndarray,
                 grad.numpy().astype(np.float64))
 
     result = minimize(to_minimize_with_grad, flat_theta, jac=True,
-                      method='L-BFGS-B', tol=1)
+                      method='L-BFGS-B')
 
     final_theta = reconstruct_tf(result.x, summary)
     final_theta = {x: y.numpy() for x, y in final_theta.items()}
