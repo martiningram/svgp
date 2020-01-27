@@ -47,7 +47,7 @@ def fit(X: np.ndarray,
         y: np.ndarray,
         n_inducing: int = 100,
         kernel: str = 'matern_3/2',
-        # Gamma priors
+        # Gamma priors (note tfp uses "concentration rate" parameterisation):
         kernel_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
         kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
         bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
