@@ -23,7 +23,7 @@ def binomial_probit_lik(k, f, n):
     return k * norm.log_cdf(f) + (n - k) * norm.log_cdf(-f)
 
 
-def ordered_probit_lik(y, f, cut_points, sd):
+def ordered_probit_lik(y, f, cut_points, sd, min_val=-20, fallback=False):
     # TODO: Consider returning a fixed negative value when predictions are
     # really off?
 
@@ -62,13 +62,24 @@ def ordered_probit_lik(y, f, cut_points, sd):
 
         base_dist = tfp.distributions.Normal(loc=f, scale=sd)
 
-        upper_logcdf = base_dist.log_cdf(upper_cut_points)
-        lower_logcdf = base_dist.log_cdf(lower_cut_points)
+        if fallback:
 
-        stacked = tf.stack([upper_logcdf, lower_logcdf], axis=1)
-        weights = tf.stack([tf.ones_like(f), -tf.ones_like(f)], axis=1)
+            upper_prob = base_dist.cdf(upper_cut_points)
+            lower_prob = base_dist.cdf(lower_cut_points)
+            log_diff = tf.math.log(upper_prob - lower_prob + 10**-6)
 
-        return tfp.math.reduce_weighted_logsumexp(stacked, weights, axis=1)
+        else:
+
+            upper_logcdf = base_dist.log_cdf(upper_cut_points)
+            lower_logcdf = base_dist.log_cdf(lower_cut_points)
+
+            stacked = tf.stack([upper_logcdf, lower_logcdf], axis=1)
+            weights = tf.stack([tf.ones_like(f), -tf.ones_like(f)], axis=1)
+
+            log_diff = tfp.math.reduce_weighted_logsumexp(stacked, weights,
+                                                          axis=1)
+
+        return log_diff
 
     lower_result = lower_function(f)
     upper_result = upper_function(f)
@@ -80,4 +91,4 @@ def ordered_probit_lik(y, f, cut_points, sd):
         tf.logical_and(tf.greater(y, ymin),
                        tf.less(y, ymax)), middle_result, result_1)
 
-    return result_2
+    return tf.maximum(result_2, min_val)
