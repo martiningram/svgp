@@ -99,9 +99,12 @@ def fit(X: np.ndarray,
         n_inducing: int = 100,
         n_latent: int = 10,
         kernel: str = 'matern_3/2',
+        # Gamma priors (note tfp uses "concentration rate" parameterisation):
         kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
-        bias_variance_prior: Tuple[float, float] = (0.5, 2),
-        w_variance_prior: Tuple[float, float] = (0.5, 2),
+        bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        w_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+        # Normal priors
+        w_mean_prior: Tuple[float, float] = (0, 1),
         bias_mean_prior: Tuple[float, float] = (0, 1),
         random_seed: int = 2) \
         -> MOGPResult:
@@ -158,6 +161,8 @@ def fit(X: np.ndarray,
     lscale_prior = tfp.distributions.Gamma(*kernel_lengthscale_prior)
     bias_var_prior = tfp.distributions.Gamma(*bias_variance_prior)
     w_var_prior = tfp.distributions.Gamma(*w_variance_prior)
+
+    w_m_prior = tfp.distributions.Normal(*w_mean_prior)
     bias_m_prior = tfp.distributions.Normal(*bias_mean_prior)
 
     # TODO: Think about priors for W?
@@ -208,6 +213,7 @@ def fit(X: np.ndarray,
                 + bias_var_prior.log_prob(intercept_prior_var)
                 + tf.reduce_sum(w_var_prior.log_prob(w_prior_var))
                 + bias_m_prior.log_prob(theta['intercept_prior_mean'])
+                + tf.reduce_sum(w_m_prior.log_prob(theta['w_prior_mean']))
             )
 
             grad = tape.gradient(objective, x_tf)

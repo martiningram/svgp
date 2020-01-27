@@ -1,10 +1,10 @@
 # Let's just use a really small subset
+import numpy as np
 from sdm_ml.utils import get_bbs_dataset
 from svgp.tf.correlated_mogp_classifier import fit
 
+X, y, species, sites, scaler = get_bbs_dataset(None, None)
 
-n_out = 16
+result = fit(X, y, n_inducing=100, n_latent=16)
 
-X, y, species, sites, scaler = get_bbs_dataset(100, n_out)
-
-result = fit(X, y, n_inducing=10, n_latent=2)
+np.savez('correlated_mogp_bbs_lscale_prior_16', **result._asdict())
