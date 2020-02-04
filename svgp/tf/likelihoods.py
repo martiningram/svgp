@@ -92,3 +92,11 @@ def ordered_probit_lik(y, f, cut_points, sd, min_val=-20, fallback=False):
                        tf.less(y, ymax)), middle_result, result_1)
 
     return tf.maximum(result_2, min_val)
+
+
+def ppm_likelihood_quadrature(y, f, weights):
+    # y: 1 if observation, 0 if quadrature point
+    # f: predicted value
+    # weights: quadrature weights
+
+    return weights * (y * f - tf.exp(f))
