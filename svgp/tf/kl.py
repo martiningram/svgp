@@ -3,6 +3,7 @@ from .config import DTYPE
 from ml_tools.tensorflow import rep_matrix
 
 
+@tf.function
 def mvn_kl(mu_0, sigma_0, mu_1, sigma_1, is_batch=False):
     # TODO: This is a bit vague. Explain that the prior is _not_ batched.
 
@@ -29,6 +30,7 @@ def mvn_kl(mu_0, sigma_0, mu_1, sigma_1, is_batch=False):
     return term_1 + term_2
 
 
+@tf.function
 def normal_kl_1d(mu1, var1, mu2, var2):
 
     sd1 = tf.sqrt(var1)

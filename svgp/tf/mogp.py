@@ -1,9 +1,10 @@
 import numpy as np
 import tensorflow as tf
 from svgp.tf.quadrature import expectation
-from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term
+from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term, project_to_f
 from svgp.tf.kl import normal_kl_1d
 from .config import DTYPE
+from functools import partial
 
 
 # TODO: The create_ls function seems to have benefited from being a
@@ -37,6 +38,15 @@ def create_ls(elements, mat_size, n_latent):
     return tf.stack(Ls)
 
 
+def compute_kernels(X, Zs, ks, diag_only=True):
+
+    knms = tf.stack([k_fun(X, Z) for k_fun, Z in zip(ks, Zs)])
+    kmms = tf.stack([k_fun(Z, Z) for k_fun, Z in zip(ks, Zs)])
+    knn = tf.stack([k_fun(X, X, diag_only=diag_only) for k_fun in ks])
+
+    return knms, kmms, knn
+
+
 def project_latents(x, Z, ms, Ls, ks):
     """
     Projects each of the latent GPs in the MOGP from values at the inducing
@@ -55,21 +65,20 @@ def project_latents(x, Z, ms, Ls, ks):
         variance [n_latent x n_data] for each latent GP.
     """
 
-    # First trick will be to project all the latent stuff:
-    # I'm doing a for loop here for now but ultimately we can do better things
-    m_proj = list()
-    var_proj = list()
+    knm, kmm, knn = compute_kernels(x, Z, ks, diag_only=True)
+    m_proj, var_proj = map_projections(kmm, knm, knn, ms, Ls)
 
-    for cur_m, cur_l, cur_k, cur_z in zip(ms, Ls, ks, Z):
+    return m_proj, var_proj
 
-        cur_mean, cur_vars = compute_qf_mean_cov(cur_l, cur_m, x, cur_z, cur_k,
-                                                 diag_only=True)
 
-        m_proj.append(cur_mean)
-        var_proj.append(cur_vars)
+@tf.function
+def map_projections(kmm, knm, knn, ms, Ls):
 
-    m_proj = tf.stack(m_proj)
-    var_proj = tf.stack(var_proj)
+    projection_fun = partial(project_to_f, diag_only=True)
+    projection_fun_split = lambda x: projection_fun(*x)
+
+    m_proj, var_proj = tf.map_fn(projection_fun_split, [kmm, knm, knn, ms, Ls],
+                                 dtype=(DTYPE, DTYPE))
 
     return m_proj, var_proj
 
