@@ -94,9 +94,30 @@ def ordered_probit_lik(y, f, cut_points, sd, min_val=-20, fallback=False):
     return tf.maximum(result_2, min_val)
 
 
-def ppm_likelihood_quadrature(y, f, weights):
-    # y: 1 if observation, 0 if quadrature point
-    # f: predicted value
-    # weights: quadrature weights
+def ppm_likelihood_berman_turner(y, f, weights):
+    """
+    This uses the "Berman-Turner device" to write the PPM likelihood as a
+    weighted Poisson likelihood.
+
+    Args:
+        y: 1 / w_i if entry i is an observed point, 0 otherwise.
+        f: The [log] intensities at each point.
+        weights: The quadrature weights.
+    """
 
     return weights * (y * f - tf.exp(f))
+
+
+def ppm_likelihood_quadrature_approx(y, f, weights):
+    """
+    This computes the PPM likelihood without including the observed points in
+    the approximation of the integral.
+
+    Args:
+        y: 1 if observed point, 0 if quadrature point.
+        f: The [log] intensities at each point.
+        weights: The quadrature weights. Note that weights for the observed
+            points must be included, but their value does not matter.
+    """
+
+    return y * f - (1 - y) * weights * tf.exp(f)
