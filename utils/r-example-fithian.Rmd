@@ -1,0 +1,141 @@
+---
+title: "SVGP in R -- Fithian eucalyptus"
+author: "Martin Ingram"
+date: "14/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The purpose of this document is to describe how to fit a Poisson Point Process Model in R using the SVGP package.
+
+```{r}
+library(reticulate)
+use_condaenv('svgp', required=TRUE)
+```
+
+Hopefully this all works OK. Here, I'm assuming that you have run the `utils/install_reticulate.sh` file, which sets up the `svgp` environment we'll be using.
+
+```{r}
+ppp_sogp <- import('svgp.tf.models.ppp_sogp')
+```
+
+## Fithian data
+
+```{r}
+# Point this at the right path
+load('../../presence_only/fithian_data/biasCorrection/allData.RData')
+```
+
+```{r}
+# Load the relevant data
+pa_df <- PA
+bg_df <- background
+po_df <- do.call(rbind, PO.list)
+
+species <- sapply(row.names(po_df), function (x) strsplit(x, '.', fixed=TRUE)[[1]][1], USE.NAMES=FALSE)
+
+po_df$species <- species
+```
+
+```{r}
+covs_to_use <- c(
+  'bc04', 'rsea', 'bc33', 'bc12', 'rjja', 'bc02', 'bc05', 'bc14',
+  'bc21', 'bc32', 'mvbf', 'rugg', 'twmd', 'twmx')
+
+get_species_data <- function(species_name, po_df, bg_df, pa_df) {
+  
+  # A convenience function to fetch and prepare data for fitting & evaluation
+  sample_po_data <- po_df[po_df$species == species_name, ]
+  
+  stopifnot(dim(sample_po_data)[1] > 1)
+
+  po_covs <- sample_po_data[, covs_to_use]
+  po_covs <- na.omit(po_covs)
+  y_pres <- rep(1, dim(po_covs)[1])
+  
+  bg_covs <- bg_df[, covs_to_use]
+  bg_covs <- na.omit(bg_covs)
+  y_bg <- rep(0, dim(bg_covs)[1])
+  
+  cov_full <- rbind(po_covs, bg_covs)
+  y_full <- c(y_pres, y_bg)
+  
+  cov_full_scaled <- scale(cov_full)
+  cov_full <- data.frame(cov_full_scaled)
+  
+  pa_covs <- pa_df[, covs_to_use]
+  
+  pa_pres <- pa_df[, species_name]
+  
+  to_keep <- rowSums(is.na(pa_covs)) == 0
+  pa_covs <- pa_covs[to_keep, ]
+  pa_pres <- pa_pres[to_keep]
+  
+  # Scale these
+  pa_covs <- scale(pa_covs, center = attr(cov_full_scaled, 'scaled:center'), 
+                   scale = attr(cov_full_scaled, 'scaled:scale'))
+  
+  list(
+    covs = cov_full, # The full presence-only covariates, including backgrounds (standardised)
+    ys = y_full, # Indicators for presence / background
+    pa_covs = pa_covs, # The presence / absence covariates (standardised)
+    y_pa = pa_pres # Indicators for presence / absence
+  )
+  
+}
+
+sample_data <- get_species_data('eucafrax', pa_df = pa_df, po_df = po_df, bg_df = bg_df)
+ 
+```
+
+```{r}
+X_fit <- sample_data$covs
+y_fit <- sample_data$ys
+
+n_quad_samples <- sum(y_fit == 0)
+
+# TODO: This should really be given a more reasonable value
+total_area <- 1000
+quad_weight <- total_area / n_quad_samples
+weights <- rep(quad_weight, length(y_fit))
+
+# NOTE: weights will be ignored for the observed points.
+# This differs from much of the literature which uses the "Berman-Turner device" to
+# cast the likelihood as a weighted Poisson.
+
+# Fit the model. This may take a few minutes.
+# If you get an error message, try running it again. Sometimes the initial values are bad and
+# it crashes.
+fit_result <- ppp_sogp$fit(as.matrix(X_fit), as.vector(y_fit), as.vector(weights), 
+                           n_inducing = 100L, use_berman_turner = FALSE)
+```
+
+```{r}
+# We can now predict the presence absence data:
+pa_covs <- sample_data$pa_covs
+y_pa <- sample_data$y_pa
+
+# You may get a tensorflow warningn but it's no big deal -- things could just be a bit more efficiently coded.
+preds <- ppp_sogp$predict(fit_result, pa_covs)
+```
+
+```{r}
+# Predicted mean (log) intensity
+mean_pred <- preds[[1]]
+
+# Predicted variance (uncertainty).
+var_pred <- preds[[2]]
+
+# Let's evaluate this using AUC
+library(pROC)
+```
+
+```{r}
+roc(y_pa, mean_pred)
+```
+

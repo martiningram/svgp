@@ -1,0 +1,89 @@
+---
+title: "SVGP in R"
+author: "Martin Ingram"
+date: "14/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The purpose of this document is to describe how to fit a Poisson Point Process Model in R using the SVGP package.
+
+```{r}
+library(reticulate)
+use_condaenv('svgp', required=TRUE)
+```
+
+Hopefully this all works OK. Here, I'm assuming that you have run the `utils/install_reticulate.sh` file, which sets up the `svgp` environment we'll be using.
+
+```{r}
+ppp_sogp <- import('svgp.tf.models.ppp_sogp')
+```
+
+```{r}
+# We'll be making up some random data here to make sure things are working.
+# Make up some point locations
+x <- runif(100, -2, 2)
+y <- runif(100, -3, 3)
+
+plot(x, y)
+```
+
+```{r}
+library(spatstat)
+
+pattern <- ppp(x, y, c(-2, 2), c(-3, 3))
+
+plot(pattern)
+```
+
+```{r}
+# make the quadrature points using berman-turner
+quad_points <- quadscheme(pattern, method='grid', n_quad=c(10, 10))
+
+w_quad <- w.quad(quad_points)
+x_quad <- x.quad(quad_points)
+y_quad <- y.quad(quad_points)
+
+plot(quad_points)
+```
+
+```{r}
+# Make up some random covariates for these
+X <- matrix(rnorm(length(x_quad) * 3), nrow=length(x_quad))
+```
+
+```{r}
+is_observation <- rep(0, length(x_quad))
+is_observation[1:length(x)] <- 1
+```
+
+```{r}
+# Make the berman-turner Z
+z <- is_observation / w_quad
+```
+
+```{r}
+# Try fitting this
+fit_result <- svgp$fit(X, z, w_quad, n_inducing=20L, fit_inducing_using_presences_only = FALSE, log_theta_dir = '/tmp/reticulate_log/')
+```
+
+```{r}
+predictions <- svgp$predict(fit_result, X)
+```
+
+```{r}
+pred_means <- predictions[[1]]
+```
+
+```{r}
+library(ggplot2)
+
+qplot(x_quad, y_quad, colour=pred_means) + scale_colour_continuous() + theme_classic()
+
+```
+

@@ -75,8 +75,8 @@ def calculate_objective(X: tf.Tensor, z: tf.Tensor, weights: tf.Tensor,
 
 
 def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
-        fit_inducing_using_presences_only: bool = True, verbose: bool = True,
-        log_theta_dir: Optional[str] = None):
+        fit_inducing_using_presences_only: bool = False, verbose: bool = True,
+        log_theta_dir: Optional[str] = None, use_berman_turner: bool = False):
     # TODO: Perhaps allow a separate kernel to be placed on bias
     # In general, it would be nice to have more flexibility in how to set the
     # kernel... But keep it simple for now.
@@ -142,7 +142,8 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
 
             cur_spec = create_spec(theta)
 
-            cur_objective = -calculate_objective(X, z, weights, cur_spec)
+            cur_objective = -calculate_objective(
+                X, z, weights, cur_spec, use_berman_turner=use_berman_turner)
 
             # Add a prior on the lengthscales
             lscale_prior = tf.reduce_sum(
