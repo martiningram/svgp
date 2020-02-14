@@ -16,7 +16,7 @@ conda activate svgp
 cd .. && python setup.py develop
 
 # cd back into this directory
-cd utils
+cd R
 
 # Clone ml_tools (and remove if it exists first to make sure we have the latest
 # version)
