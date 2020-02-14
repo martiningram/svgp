@@ -9,8 +9,8 @@ import svgp.tf.mogp_correlated_weights as corr_mogp
 import svgp.tf.mogp as mogp
 from ml_tools.tensorflow import lo_tri_from_elements, rep_vector
 from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
-from .config import JITTER
-from .likelihoods import bernoulli_probit_lik
+from ..config import JITTER
+from ..likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
 from ml_tools.normals import covar_to_corr
 from ml_tools.normals import normal_cdf_integral
@@ -35,7 +35,8 @@ class CorrelatedMOGPResult(NamedTuple):
     w_prior_cov: np.ndarray
 
 
-def create_pos_def_mat_from_elts_batch(elements, mat_size, n_mats, jitter=JITTER):
+def create_pos_def_mat_from_elts_batch(elements, mat_size, n_mats,
+                                       jitter=JITTER):
 
     ls = mogp.create_ls(elements, mat_size, n_mats)
     pos_def = ls @ tf.transpose(ls, (0, 2, 1))
@@ -185,9 +186,6 @@ def fit(X: np.ndarray,
 
 
 def predict(fit_result: CorrelatedMOGPResult, X_new: np.ndarray):
-
-    n_inducing = fit_result.mu.shape[1]
-    n_latent = fit_result.mu.shape[0]
 
     base_kern = kern_lookup[fit_result.kernel]
 

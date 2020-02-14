@@ -11,9 +11,9 @@ from svgp.tf.utils import get_initial_values_from_kernel
 from svgp.tf.likelihoods import bernoulli_probit_lik
 from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
 from .sogp_classifier import kern_lookup
-from .mogp import (create_ls, compute_mogp_kl_term, project_latents,
-                   calculate_approximate_means_and_vars, expectation)
-from .kl import normal_kl_1d
+from ..mogp import (create_ls, compute_mogp_kl_term, project_latents,
+                    calculate_approximate_means_and_vars, expectation)
+from ..kl import normal_kl_1d
 from ml_tools.normals import normal_cdf_integral
 
 
