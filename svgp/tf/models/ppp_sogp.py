@@ -1,4 +1,4 @@
-# Presence-only SOGP
+# Poisson point process SOGP
 # This module contains some convenience code to fit SOGP models to
 # presence-only data.
 from svgp.tf.experimental.inducing_point_gp import \
@@ -127,7 +127,6 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
 
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
-
     # TODO: Can / should I abstract away the creation of this function?
     def to_optimise(flat_theta):
 
@@ -181,11 +180,13 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
     return reconstruct_tf(final_flat_theta, summary)
 
 
-def predict(fit_results: Dict[str, tf.Tensor], X: np.ndarray):
+def predict(fit_results: Dict[str, tf.Tensor], X: np.ndarray) -> np.ndarray:
 
     spec = create_spec(fit_results)
 
-    return project_to_x(spec, X.astype(np.float32))
+    pred_mean, pred_var = project_to_x(spec, X.astype(np.float32))
+
+    return pred_mean.numpy(), pred_var.numpy()
 
 
 def save_results(fit_results: Dict[str, tf.Tensor], save_path: str):
