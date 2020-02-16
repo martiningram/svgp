@@ -120,4 +120,7 @@ def ppm_likelihood_quadrature_approx(y, f, weights):
             points must be included, but their value does not matter.
     """
 
-    return y * f - (1 - y) * weights * tf.exp(f)
+    presence_contrib = y * f
+    quad_contrib = (1 - y) * weights * tf.exp(f)
+
+    return presence_contrib - quad_contrib

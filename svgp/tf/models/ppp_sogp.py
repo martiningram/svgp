@@ -185,7 +185,7 @@ def predict(fit_results: Dict[str, tf.Tensor], X: np.ndarray) -> np.ndarray:
 
     spec = create_spec(fit_results)
 
-    pred_mean, pred_var = project_to_x(spec, X.astype(np.float32))
+    pred_mean, pred_var = project_to_x(spec, tf.constant(X.astype(np.float32)))
 
     return pred_mean.numpy(), pred_var.numpy()
 

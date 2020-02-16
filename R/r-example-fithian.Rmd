@@ -28,6 +28,7 @@ ppp_sogp <- import('svgp.tf.models.ppp_sogp')
 
 ```{r}
 # Point this at the right path
+# load('../../../Dropbox/My PhD thesis/Other Papers & docs/Fithian et al 2015/biasCorrection/allData.RData')
 load('../../presence_only/fithian_data/biasCorrection/allData.RData')
 ```
 
@@ -37,7 +38,9 @@ pa_df <- PA
 bg_df <- background
 po_df <- do.call(rbind, PO.list)
 
-species <- sapply(row.names(po_df), function (x) strsplit(x, '.', fixed=TRUE)[[1]][1], USE.NAMES=FALSE)
+species <- sapply(row.names(po_df), 
+                  function (x) strsplit(x, '.', fixed=TRUE)[[1]][1], 
+                  USE.NAMES=FALSE)
 
 po_df$species <- species
 ```
@@ -84,12 +87,14 @@ get_species_data <- function(species_name, po_df, bg_df, pa_df) {
     covs = cov_full, # The full presence-only covariates, including backgrounds (standardised)
     ys = y_full, # Indicators for presence / background
     pa_covs = pa_covs, # The presence / absence covariates (standardised)
-    y_pa = pa_pres # Indicators for presence / absence
+    y_pa = pa_pres, # Indicators for presence / absence,
+    means = attr(cov_full_scaled, 'scaled:center'),
+    sds = attr(cov_full_scaled, 'scaled:scale')
   )
   
 }
 
-sample_data <- get_species_data('eucafrax', pa_df = pa_df, po_df = po_df, bg_df = bg_df)
+sample_data <- get_species_data('eucaparr', pa_df = pa_df, po_df = po_df, bg_df = bg_df)
  
 ```
 
@@ -99,20 +104,23 @@ y_fit <- sample_data$ys
 
 n_quad_samples <- sum(y_fit == 0)
 
-# TODO: This should really be given a more reasonable value
-total_area <- 1000
+total_area <- region.size
 quad_weight <- total_area / n_quad_samples
 weights <- rep(quad_weight, length(y_fit))
 
-# NOTE: weights will be ignored for the observed points.
-# This differs from much of the literature which uses the "Berman-Turner device" to
-# cast the likelihood as a weighted Poisson.
+# Use Berman-Turner weights
+z <- y_fit / weights
 
 # Fit the model. This may take a few minutes.
 # If you get an error message, try running it again. Sometimes the initial values are bad and
 # it crashes.
-fit_result <- ppp_sogp$fit(as.matrix(X_fit), as.vector(y_fit), as.vector(weights), 
-                           n_inducing = 100L, use_berman_turner = FALSE)
+n_inducing = 20L
+
+# Should really use 100L!
+
+fit_result <- ppp_sogp$fit(as.matrix(X_fit), as.vector(z), as.vector(weights), 
+                           n_inducing = n_inducing, use_berman_turner = TRUE,
+                           verbose = FALSE)
 ```
 
 ```{r}
@@ -137,5 +145,65 @@ library(pROC)
 
 ```{r}
 roc(y_pa, mean_pred)
+```
+
+```{r}
+library(raster)
+# li <- list.files("~/Dropbox/MyProjects/SDM_with_PPM/data/grids", pattern = ".tif$", full.names = TRUE)
+li <- list.files("../../presence_only/fithian_data/SDM_with_PPM/data/grids", pattern = ".tif$", full.names = TRUE)
+r <- stack(li)
+plot(r)
+```
+
+```{r}
+sample_data$means
+```
+
+```{r}
+normr <- stack()
+for(v in names(r)){
+  meaanv <- sample_data$means[v]
+  sdv <- sample_data$sds[v]
+  normr <- stack(normr, (r[[v]] - meaanv) / sdv)
+}#
+```
+
+```{r}
+normr <- normr[[covs_to_use]]
+```
+
+```{r}
+rdf <- as.data.frame(normr, xy = TRUE, na.rm = TRUE)
+
+rmat <- as.matrix(rdf)
+
+predictions <- ppp_sogp$predict(fit_result, as.matrix(rdf[, covs_to_use]))
+```
+
+```{r}
+rdf[, 'mean_log_intensity'] <- as.vector(predictions[[1]])
+rdf[, 'sd_log_intensity'] <- sqrt(predictions[[2]])
+```
+
+```{r}
+sp <- SpatialPointsDataFrame(rdf[,c("x", "y")], data = rdf, proj4string = crs(r))
+pred_raster <- rasterize(x = sp, y = normr, field = "mean_log_intensity")
+
+plot((pred_raster))
+
+```
+
+```{r}
+plot(exp(pred_raster))
+```
+
+```{r}
+sd_raster <- rasterize(x = sp, y = normr, field = "sd_log_intensity")
+
+plot(sd_raster)
+```
+
+```{r}
+plot(exp(pred_raster + sd_raster^2 / 2))
 ```
 
