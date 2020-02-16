@@ -21,6 +21,11 @@ use_condaenv('svgp', required=TRUE)
 Hopefully this all works OK. Here, I'm assuming that you have run the `utils/install_reticulate.sh` file, which sets up the `svgp` environment we'll be using.
 
 ```{r}
+tf <- import('tensorflow')
+# Change the log level -- otherwise TF complains about things that don't matter so much
+tf$get_logger()$setLevel('ERROR')
+tf$autograph$set_verbosity(1)
+
 ppp_sogp <- import('svgp.tf.models.ppp_sogp')
 ```
 
