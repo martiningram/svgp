@@ -6,11 +6,14 @@
 set -e
 
 # First, make the environment and install the dependencies:
-conda create -y -n svgp python=3 tensorflow=2 numpy scipy pandas scikit-learn tensorflow-probability
+conda create -y -n svgp python=3.7 numpy scipy pandas scikit-learn 
 
 # Nonsense to get conda to work properly
 eval "$(conda shell.bash hook)"
 conda activate svgp
+
+# Install tensorflow and tensorflow probability using pip
+pip install tensorflow tensorflow-probability
 
 # Install the SVGP package
 cd .. && python setup.py develop
