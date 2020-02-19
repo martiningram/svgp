@@ -63,6 +63,73 @@ def get_default_kernel_spec(n_covariates):
     )
 
 
+def get_thinned_kernel_spec(n_covariates, thinning_indices):
+
+    def main_kernel(x1, x2, cov_alpha, cov_lengthscales, intercept_sd,
+                    diag_only=False):
+
+        matern_fun = partial(matern_kernel_32, lengthscales=cov_lengthscales,
+                             alpha=cov_alpha, diag_only=diag_only)
+
+        intercept_fun = partial(bias_kernel, sd=intercept_sd,
+                                diag_only=diag_only)
+
+        return matern_fun(x1, x2) + intercept_fun(x1, x2)
+
+    def thin_kernel(x1, x2, thin_alpha, thin_lengthscales, diag_only=False):
+
+        return matern_kernel_32(x1, x2, alpha=thin_alpha,
+                                lengthscales=thin_lengthscales,
+                                diag_only=diag_only)
+
+    def combined_kernel(x1, x2, cov_alpha, cov_lengthscales, intercept_sd,
+                        thin_alpha, thin_lengthscales, diag_only=False):
+
+        cov_indices = np.setdiff1d(np.arange(n_covariates), thinning_indices)
+
+        return (main_kernel(tf.gather(x1, cov_indices, axis=1),
+                            tf.gather(x2, cov_indices, axis=1), cov_alpha,
+                            cov_lengthscales, intercept_sd,
+                            diag_only=diag_only)
+                + thin_kernel(tf.gather(x1, thinning_indices, axis=1),
+                              tf.gather(x2, thinning_indices, axis=1),
+                              thin_alpha, thin_lengthscales,
+                              diag_only=diag_only))
+
+    n_thin_cov = len(thinning_indices)
+    n_main_cov = n_covariates - n_thin_cov
+
+    init_params = {
+        'cov_lengthscales': np.log(
+            np.random.uniform(2., 5., size=n_main_cov)),
+        'thin_lengthscales': np.log(
+            np.random.uniform(2., 5., size=n_thin_cov)),
+        'cov_alpha': np.array(0.),
+        'thin_alpha': np.array(0.),
+        'intercept_sd': np.array(0.)
+    }
+
+    init_params = {x: tf.constant(y.astype(np.float32)) for x, y in
+                   init_params.items()}
+
+    constraints = {x: '+' for x in init_params}
+
+    priors = {
+        'cov_lengthscales': lambda x: tf.reduce_sum(
+            tfp.distributions.Gamma(3, 1/3).log_prob(x)),
+        'thin_lengthscales': lambda x: tf.reduce_sum(
+            tfp.distributions.Gamma(3, 1/3).log_prob(x))
+    }
+
+    return KernelSpec(
+        base_kernel_fun=combined_kernel,
+        parameters=init_params,
+        constraints=constraints,
+        priors=priors
+    )
+
+
+
 def update_specs(theta, kernel_spec):
 
     kernel_spec = update_parameters(kernel_spec, theta)
@@ -98,7 +165,7 @@ def calculate_objective(X: tf.Tensor, z: tf.Tensor, weights: tf.Tensor,
 
 
 def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
-        thinning_X: Optional[np.ndarray] = None,
+        thinning_indices: Optional[np.ndarray] = np.array([]),
         fit_inducing_using_presences_only: bool = False, verbose: bool = True,
         log_theta_dir: Optional[str] = None, use_berman_turner: bool = False):
     # TODO: Perhaps allow a separate kernel to be placed on bias
@@ -113,12 +180,13 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
 
     n_cov = X.shape[1]
 
-    if thinning_X is None:
+    if len(thinning_indices) == 0:
         # We have an "un-thinned" point process. We need only consider the
         # covariates.
         init_kernel_spec = get_default_kernel_spec(n_cov)
     else:
-        assert False, 'thinning not yet implemented!'
+        # Include thinning
+        init_kernel_spec = get_thinned_kernel_spec(n_cov, thinning_indices)
 
     start_kernel_fun = get_kernel_fun(init_kernel_spec)
 
@@ -136,7 +204,7 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
         'Z': init_Z,
         'mu': init_spec.mu,
         'L_elts': init_spec.L_elts
-        }
+    }
 
     # Add the kernel parameters to the optimisation
     start_theta.update(init_kernel_spec.parameters)
