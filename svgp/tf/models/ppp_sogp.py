@@ -275,7 +275,8 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
 def predict(gp_spec: InducingPointGPSpecification,
             X: np.ndarray) -> np.ndarray:
 
-    pred_mean, pred_var = project_to_x(gp_spec, tf.constant(X.astype(np.float32)))
+    pred_mean, pred_var = project_to_x(
+        gp_spec, tf.constant(X.astype(np.float32)))
 
     return pred_mean.numpy(), pred_var.numpy()
 
