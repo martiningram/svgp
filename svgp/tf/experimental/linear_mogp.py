@@ -58,7 +58,7 @@ def project_to_x(linear_mogp: LinearMOGPSpec,
         latent_mean, latent_var, tf.transpose(linear_mogp.w_means),
         tf.transpose(tf.sqrt(linear_mogp.w_vars)))
 
-    if linear_mogp.w_means is not None:
+    if linear_mogp.intercept_means is not None:
 
         # Add on the intercept
         # TODO: Do I need to reshape these?
@@ -83,7 +83,7 @@ def project_selected_to_x(
             tf.transpose(latent_mean), tf.transpose(latent_var), rel_means,
             rel_vars, sum_fun=tf.reduce_sum)
 
-    if linear_mogp.w_means is not None:
+    if linear_mogp.intercept_means is not None:
 
         rel_intercept_means = tf.gather(linear_mogp.intercept_means,
                                         output_nums)
