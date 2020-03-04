@@ -15,7 +15,7 @@ from svgp.tf.quadrature import expectation
 from ml_tools.flattening import (flatten_and_summarise_tf, reconstruct_tf,
                                  reconstruct_np)
 from scipy.optimize import minimize
-from typing import Dict, Optional
+from typing import Optional
 import tensorflow_probability as tfp
 from os.path import join
 from os import makedirs
@@ -129,7 +129,6 @@ def get_thinned_kernel_spec(n_covariates, thinning_indices):
     )
 
 
-
 def update_specs(theta, kernel_spec):
 
     kernel_spec = update_parameters(kernel_spec, theta)
@@ -147,7 +146,7 @@ def update_specs(theta, kernel_spec):
 
 def calculate_objective(X: tf.Tensor, z: tf.Tensor, weights: tf.Tensor,
                         gp_spec: InducingPointGPSpecification,
-                        use_berman_turner=True):
+                        use_berman_turner=True, likelihood_scale_factor=1.):
 
     proj_mean, proj_var = project_to_x(gp_spec, X)
 
@@ -161,24 +160,10 @@ def calculate_objective(X: tf.Tensor, z: tf.Tensor, weights: tf.Tensor,
     expected_lik = expectation(z, proj_var, proj_mean, curried_lik_fun)
     kl = calculate_kl(gp_spec)
 
-    return expected_lik - kl
+    return likelihood_scale_factor * expected_lik - kl
 
 
-def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
-        thinning_indices: Optional[np.ndarray] = np.array([]),
-        fit_inducing_using_presences_only: bool = False, verbose: bool = True,
-        log_theta_dir: Optional[str] = None, use_berman_turner: bool = False):
-    # TODO: Perhaps allow a separate kernel to be placed on bias
-    # In general, it would be nice to have more flexibility in how to set the
-    # kernel... But keep it simple for now.
-    # X is assumed to be scaled.
-    # Also, might be nice to easily be able to switch between minibatching and
-    # full batch. But for now, just do full batch.
-
-    global STEP
-    STEP = 0
-
-    n_cov = X.shape[1]
+def initialise_theta(n_cov, thinning_indices, init_Z):
 
     if len(thinning_indices) == 0:
         # We have an "un-thinned" point process. We need only consider the
@@ -189,13 +174,6 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
         init_kernel_spec = get_thinned_kernel_spec(n_cov, thinning_indices)
 
     start_kernel_fun = get_kernel_fun(init_kernel_spec)
-
-    if fit_inducing_using_presences_only:
-        X_to_cluster = X[z > 0, :]
-    else:
-        X_to_cluster = X
-
-    init_Z = find_starting_z(X_to_cluster, n_inducing).astype(np.float32)
 
     # Initialise the GP
     init_spec = initialise_using_kernel_fun(start_kernel_fun, init_Z)
@@ -210,8 +188,73 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
     start_theta.update(init_kernel_spec.parameters)
 
     # Make sure they're all the right type
-    start_theta = {x: np.array(y).astype(np.float64) for x, y in
+    start_theta = {x: np.array(y).astype(np.float32) for x, y in
                    start_theta.items()}
+
+    return start_theta, init_kernel_spec
+
+
+def to_optimise(flat_theta, X, z, weights, use_berman_turner, summary,
+                init_kernel_spec, log_theta_dir=None, verbose=True,
+                likelihood_scale_factor=1.):
+
+    global STEP
+
+    flat_theta = tf.cast(tf.constant(flat_theta), tf.float32)
+
+    with tf.GradientTape() as tape:
+
+        tape.watch(flat_theta)
+
+        theta = reconstruct_tf(flat_theta, summary)
+
+        kernel_spec, gp_spec = update_specs(theta, init_kernel_spec)
+
+        cur_objective = -calculate_objective(
+            X, z, weights, gp_spec, use_berman_turner=use_berman_turner)
+
+        kernel_prior_prob = calculate_prior_prob(kernel_spec)
+        cur_objective = cur_objective - kernel_prior_prob
+
+        cur_grad = tape.gradient(cur_objective, flat_theta)
+
+        if log_theta_dir is not None:
+            makedirs(log_theta_dir, exist_ok=True)
+            grads = reconstruct_np(cur_grad.numpy(), summary)
+            theta = reconstruct_np(flat_theta.numpy(), summary)
+            np.savez(join(log_theta_dir, f'grads_{STEP}'), **grads,
+                     objective=cur_objective.numpy(), step=STEP)
+            np.savez(join(log_theta_dir, f'theta_{STEP}'), **theta,
+                     objective=cur_objective.numpy(), step=STEP)
+
+        STEP += 1
+
+        if verbose:
+            print(cur_objective, np.linalg.norm(cur_grad.numpy()))
+
+    return (cur_objective.numpy().astype(np.float64),
+            cur_grad.numpy().astype(np.float64))
+
+
+def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
+        thinning_indices: Optional[np.ndarray] = np.array([]),
+        fit_inducing_using_presences_only: bool = False, verbose: bool = True,
+        log_theta_dir: Optional[str] = None, use_berman_turner: bool = False):
+
+    global STEP
+    STEP = 0
+
+    n_cov = X.shape[1]
+
+    if fit_inducing_using_presences_only:
+        X_to_cluster = X[z > 0, :]
+    else:
+        X_to_cluster = X
+
+    init_Z = find_starting_z(X_to_cluster, n_inducing).astype(np.float32)
+
+    start_theta, init_kernel_spec = initialise_theta(n_cov, thinning_indices,
+                                                     init_Z)
 
     # Prepare the tensors
     X = tf.cast(tf.constant(X), tf.float32)
@@ -220,49 +263,13 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
 
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
-    # TODO: Can / should I abstract away the creation of this function?
-    def to_optimise(flat_theta):
+    opt_fun = partial(to_optimise, X=X, z=z, weights=weights,
+                      use_berman_turner=use_berman_turner, summary=summary,
+                      init_kernel_spec=init_kernel_spec,
+                      log_theta_dir=log_theta_dir, verbose=verbose,
+                      likelihood_scale_factor=1.)
 
-        global STEP
-
-        flat_theta = tf.cast(tf.constant(flat_theta), tf.float32)
-
-        with tf.GradientTape() as tape:
-
-            tape.watch(flat_theta)
-
-            theta = reconstruct_tf(flat_theta, summary)
-
-            kernel_spec, gp_spec = update_specs(theta, init_kernel_spec)
-
-            cur_objective = -calculate_objective(
-                X, z, weights, gp_spec, use_berman_turner=use_berman_turner)
-
-            kernel_prior_prob = calculate_prior_prob(kernel_spec)
-            cur_objective = cur_objective - kernel_prior_prob
-
-            cur_grad = tape.gradient(cur_objective, flat_theta)
-
-            if log_theta_dir is not None:
-                makedirs(log_theta_dir, exist_ok=True)
-                grads = reconstruct_np(cur_grad.numpy(), summary)
-                theta = reconstruct_np(flat_theta.numpy(), summary)
-                np.savez(join(log_theta_dir, f'grads_{STEP}'),
-                         **grads, objective=cur_objective.numpy(),
-                         step=STEP)
-                np.savez(join(log_theta_dir, f'theta_{STEP}'),
-                         **theta, objective=cur_objective.numpy(),
-                         step=STEP)
-
-            STEP += 1
-
-            if verbose:
-                print(cur_objective, np.linalg.norm(cur_grad.numpy()))
-
-        return (cur_objective.numpy().astype(np.float64),
-                cur_grad.numpy().astype(np.float64))
-
-    result = minimize(to_optimise, flat_theta.numpy().astype(np.float64),
+    result = minimize(opt_fun, flat_theta.numpy().astype(np.float64),
                       method='L-BFGS-B', jac=True)
 
     final_flat_theta = result.x.astype(np.float32)

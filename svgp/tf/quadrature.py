@@ -13,7 +13,7 @@ def transform_x(x, sigma, mu):
     return tf.sqrt(tf.constant(2., dtype=DTYPE)) * sigma * x + mu
 
 
-def expectation(ys, vars, means, log_y_f):
+def expectation(ys, vars, means, log_y_f, sum_result=True):
     """
     Returns the individual expectations for each of the ys.
 
@@ -33,6 +33,9 @@ def expectation(ys, vars, means, log_y_f):
     multiplied = tf.reshape(
         w_quad_tf, (-1, 1)) * log_y_f(ys, x_to_eval)
 
-    reduced = tf.reduce_sum(multiplied)
+    if sum_result:
+        reduced = tf.reduce_sum(multiplied)
+    else:
+        reduced = multiplied
 
     return reduced / tf.sqrt(tf.constant(np.pi, dtype=DTYPE))
