@@ -22,6 +22,8 @@ from os import makedirs
 from svgp.tf.experimental.kernel_spec import (
     KernelSpec, update_parameters, get_kernel_fun, calculate_prior_prob)
 import dill
+from ml_tools.minibatching import optimise_minibatching
+from ml_tools.adam import initialise_state, adam_step
 
 STEP = 0
 
@@ -273,6 +275,74 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
                       method='L-BFGS-B', jac=True)
 
     final_flat_theta = result.x.astype(np.float32)
+    final_theta = reconstruct_tf(final_flat_theta, summary)
+    _, final_spec = update_specs(final_theta, init_kernel_spec)
+
+    return final_spec
+
+
+def fit_minibatching(X: np.ndarray,
+                     z: np.ndarray,
+                     weights: np.ndarray,
+                     n_inducing: int,
+                     thinning_indices: Optional[np.ndarray] = np.array([]),
+                     fit_inducing_using_presences_only: bool = False,
+                     verbose: bool = True,
+                     log_theta_dir: Optional[str] = None,
+                     use_berman_turner: bool = False,
+                     batch_size: int = 1000,
+                     learning_rate: float = 0.01,
+                     n_steps: int = 1000,
+                     sqrt_decay_learning_rate: bool = True):
+
+    global STEP
+    STEP = 0
+
+    makedirs(log_theta_dir, exist_ok=True)
+
+    n_cov = X.shape[1]
+
+    if fit_inducing_using_presences_only:
+        X_to_cluster = X[z > 0, :]
+    else:
+        X_to_cluster = X
+
+    init_Z = find_starting_z(X_to_cluster, n_inducing).astype(np.float32)
+
+    start_theta, init_kernel_spec = initialise_theta(n_cov, thinning_indices,
+                                                     init_Z)
+
+    flat_theta, summary = flatten_and_summarise_tf(**start_theta)
+
+    data_dict = {
+        'X': X,
+        'z': z,
+        'weights': weights
+    }
+
+    data_dict = {x: y.astype(np.float32) for x, y in data_dict.items()}
+
+    if sqrt_decay_learning_rate:
+        # Decay with sqrt of time
+        step_size_fun = lambda t: learning_rate * (1 / np.sqrt(t))
+    else:
+        # Constant learning rate
+        step_size_fun = lambda t: learning_rate
+
+    opt_fun = partial(to_optimise, use_berman_turner=use_berman_turner,
+                      summary=summary, init_kernel_spec=init_kernel_spec,
+                      log_theta_dir=log_theta_dir, verbose=verbose,
+                      likelihood_scale_factor=X.shape[0] / batch_size)
+
+    adam_state = initialise_state(flat_theta.shape[0])
+
+    adam_fun = partial(adam_step, step_size_fun=step_size_fun)
+
+    result, loss_log = optimise_minibatching(
+        data_dict, opt_fun, adam_fun, flat_theta, batch_size, n_steps,
+        X.shape[0], join(log_theta_dir, 'loss.txt'), False, adam_state)
+
+    final_flat_theta = result.numpy().astype(np.float32)
     final_theta = reconstruct_tf(final_flat_theta, summary)
     _, final_spec = update_specs(final_theta, init_kernel_spec)
 
