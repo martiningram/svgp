@@ -6,8 +6,7 @@ import tensorflow as tf
 from svgp.tf.quadrature import expectation
 from ml_tools.gp import find_starting_z
 from ml_tools.tf_kernels import matern_kernel_32
-from ml_tools.flattening import (flatten_and_summarise_tf, reconstruct_tf,
-                                 reconstruct_np)
+from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
 import tensorflow_probability as tfp
 import os
 from ml_tools.utils import create_path_with_variables
@@ -228,10 +227,11 @@ def fit(X: np.ndarray,
         X_thin: Optional[np.ndarray] = None,
         n_thin_inducing: Optional[int] = None,
         learning_rate: float = 0.01,
-        steps_per_run: int = 1000,
-        n_runs: int = 200,
+        steps: int = 100000,
         batch_size: int = 50000,
-        log_folder: Optional[str] = None):
+        log_folder: Optional[str] = None,
+        save_opt_state: bool = False,
+        save_every: Optional[int] = 1000):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
@@ -252,8 +252,8 @@ def fit(X: np.ndarray,
 
         log_folder = os.path.join(
             log_folder, create_path_with_variables(
-                lr=learning_rate, batch_size=batch_size, n_runs=n_runs,
-                steps_per_run=steps_per_run, upscaled_weights=True))
+                lr=learning_rate, batch_size=batch_size,
+                steps=steps))
 
         os.makedirs(log_folder, exist_ok=True)
 
@@ -276,25 +276,19 @@ def fit(X: np.ndarray,
     else:
         to_optimise = partial(to_optimise, X_thin=None)
 
-    for i in range(n_runs):
-
-        flat_theta, loss_log, opt_state = optimise_minibatching(
-            full_data,
-            to_optimise,
-            opt_step_fun,
-            flat_theta,
-            batch_size,
-            steps_per_run,
-            X.shape[0],
-            log_file=log_file,
-            append_to_log_file=i != 0,
-            opt_state=opt_state,
-            save_opt_state=False)
-
-        fit_results = reconstruct_np(flat_theta, summary)
-
-        np.savez(os.path.join(
-            log_folder, f'fit_results_{(i + 1) * 1000}'),
-                 **fit_results)
+    flat_theta, loss_log, _ = optimise_minibatching(
+        full_data,
+        to_optimise,
+        opt_step_fun,
+        flat_theta,
+        batch_size,
+        steps,
+        X.shape[0],
+        log_file=log_file,
+        opt_state=opt_state,
+        save_opt_state=save_opt_state,
+        save_every=save_every,
+        summary=summary
+    )
 
     return reconstruct_tf(flat_theta, summary)
