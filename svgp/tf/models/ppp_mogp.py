@@ -278,7 +278,7 @@ def fit(X: np.ndarray,
 
     for i in range(n_runs):
 
-        flat_theta, loss_log = optimise_minibatching(
+        flat_theta, loss_log, opt_state = optimise_minibatching(
             full_data,
             to_optimise,
             opt_step_fun,
@@ -288,7 +288,8 @@ def fit(X: np.ndarray,
             X.shape[0],
             log_file=log_file,
             append_to_log_file=i != 0,
-            opt_state=opt_state)
+            opt_state=opt_state,
+            save_opt_state=False)
 
         fit_results = reconstruct_np(flat_theta, summary)
 
