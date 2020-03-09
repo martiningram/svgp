@@ -17,7 +17,8 @@ from svgp.tf.experimental.multi_inducing_point_gp import \
     MultiInducingPointGPSpecification, initialise_using_kernel_funs
 from typing import Optional
 from ml_tools.adam import adam_step, initialise_state
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
+import dill
 
 
 class PPPMOGPSpec(NamedTuple):
@@ -313,11 +314,12 @@ def fit(X: np.ndarray,
 
 
 def predict(spec: PPPMOGPSpec, X: np.ndarray,
-            X_thin: Optional[np.ndarray] = None):
+            X_thin: Optional[np.ndarray] = None) -> \
+        Tuple[np.ndarray, np.ndarray]:
 
     # TODO: Fix up the types
-    env_means, env_vars = project_to_x(
-        spec.cov_mogp_spec, X.astype(np.float32))
+    env_means, env_vars = project_to_x(spec.cov_mogp_spec,
+                                       X.astype(np.float32))
 
     if X_thin is not None:
 
@@ -326,4 +328,13 @@ def predict(spec: PPPMOGPSpec, X: np.ndarray,
         env_means += thin_means
         env_vars += thin_vars
 
-    return env_means, env_vars
+    return env_means.numpy(), env_vars.numpy()
+
+
+# TODO: Add predict_selected.
+
+
+def save_results(spec: PPPMOGPSpec, target_file: str):
+
+    with open(target_file, 'wb') as f:
+        dill.dump(spec, f)
