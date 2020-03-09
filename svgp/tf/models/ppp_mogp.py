@@ -12,11 +12,18 @@ import os
 from ml_tools.utils import create_path_with_variables
 from ml_tools.minibatching import optimise_minibatching
 from svgp.tf.experimental.linear_mogp import (
-    LinearMOGPSpec, calculate_kl, project_selected_to_x)
+    LinearMOGPSpec, calculate_kl, project_selected_to_x, project_to_x)
 from svgp.tf.experimental.multi_inducing_point_gp import \
     MultiInducingPointGPSpecification, initialise_using_kernel_funs
 from typing import Optional
 from ml_tools.adam import adam_step, initialise_state
+from typing import NamedTuple
+
+
+class PPPMOGPSpec(NamedTuple):
+
+    cov_mogp_spec: LinearMOGPSpec
+    thin_mogp_spec: Optional[LinearMOGPSpec] = None
 
 
 def get_kernel_funs(lengthscales, alphas):
@@ -54,6 +61,60 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
     return lik_scale_factor * lik - kl
 
 
+def build_spec(theta, n_latent, is_thinned=False):
+
+    kernel_funs = get_kernel_funs(theta['lscales'], tf.tile([1.], (n_latent,)))
+
+    # Build the environment GP
+    gp_spec = MultiInducingPointGPSpecification(
+        L_elts=theta['L_elts'],
+        mus=theta['mus'],
+        kernel_funs=kernel_funs,
+        Zs=theta['Zs']
+    )
+
+    # Build the linear MOGP spec on the environment
+    linear_gp_spec = LinearMOGPSpec(
+        multi_gp=gp_spec,
+        w_means=theta['w_means'],
+        w_vars=tf.exp(theta['w_vars']),
+        w_prior_mean=theta['w_prior_mean'],
+        w_prior_var=tf.exp(theta['w_prior_var']),
+        intercept_means=theta['intercept_means'],
+        intercept_vars=tf.exp(theta['intercept_vars']),
+        intercept_prior_mean=theta['intercept_prior_mean'],
+        intercept_prior_var=tf.exp(theta['intercept_prior_var'])
+    )
+
+    if is_thinned:
+
+        k_funs_thin = get_kernel_funs(
+            theta['thin_lscales'], tf.tile([1.], (1,)))
+
+        # Build and add the thinning GP
+        thin_gp_spec = MultiInducingPointGPSpecification(
+            L_elts=theta['thin_L_elts'],
+            mus=theta['thin_mus'],
+            kernel_funs=k_funs_thin,
+            Zs=theta['thin_Zs']
+        )
+
+        thin_linear_spec = LinearMOGPSpec(
+            multi_gp=thin_gp_spec,
+            w_means=theta['thin_w_means'],
+            w_vars=tf.exp(theta['thin_w_vars']),
+            w_prior_mean=theta['thin_w_prior_mean'],
+            w_prior_var=tf.exp(theta['thin_w_prior_var']),
+        )
+
+    else:
+
+        thin_linear_spec = None
+
+    return PPPMOGPSpec(cov_mogp_spec=linear_gp_spec,
+                       thin_mogp_spec=thin_linear_spec)
+
+
 def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
                        n_latent, n_data, use_berman_turner):
 
@@ -77,60 +138,13 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
 
         theta = reconstruct_tf(flat_theta, summary)
 
-        kernel_funs = get_kernel_funs(
-            theta['lscales'], tf.tile([1.], (n_latent,)))
-
-        # Build the environment GP
-        gp_spec = MultiInducingPointGPSpecification(
-            L_elts=theta['L_elts'],
-            mus=theta['mus'],
-            kernel_funs=kernel_funs,
-            Zs=theta['Zs']
-        )
-
-        # Build the linear MOGP spec on the environment
-        linear_gp_spec = LinearMOGPSpec(
-            multi_gp=gp_spec,
-            w_means=theta['w_means'],
-            w_vars=tf.exp(theta['w_vars']),
-            w_prior_mean=theta['w_prior_mean'],
-            w_prior_var=tf.exp(theta['w_prior_var']),
-            intercept_means=theta['intercept_means'],
-            intercept_vars=tf.exp(theta['intercept_vars']),
-            intercept_prior_mean=theta['intercept_prior_mean'],
-            intercept_prior_var=tf.exp(theta['intercept_prior_var'])
-        )
-
-        if X_thin is not None:
-
-            k_funs_thin = get_kernel_funs(
-                theta['thin_lscales'], tf.tile([1.], (1,)))
-
-            # Build and add the thinning GP
-            thin_gp_spec = MultiInducingPointGPSpecification(
-                L_elts=theta['thin_L_elts'],
-                mus=theta['thin_mus'],
-                kernel_funs=k_funs_thin,
-                Zs=theta['thin_Zs']
-            )
-
-            thin_linear_spec = LinearMOGPSpec(
-                multi_gp=thin_gp_spec,
-                w_means=theta['thin_w_means'],
-                w_vars=tf.exp(theta['thin_w_vars']),
-                w_prior_mean=theta['thin_w_prior_mean'],
-                w_prior_var=tf.exp(theta['thin_w_prior_var']),
-            )
-
-        else:
-
-            thin_linear_spec = None
+        spec = build_spec(theta, n_latent, is_thinned=X_thin is not None)
 
         # Fix prior mean and var to start with
         obj = -calculate_objective(
-            linear_gp_spec, X, sp_num, z, weights,
+            spec.cov_mogp_spec, X, sp_num, z, weights,
             lik_scale_factor=n_data / X.shape[0],
-            thinning_mogp_spec=thin_linear_spec, X_thin=X_thin,
+            thinning_mogp_spec=spec.thin_mogp_spec, X_thin=X_thin,
             use_berman_turner=use_berman_turner)
 
         # Add prior on lengthscales
@@ -291,4 +305,25 @@ def fit(X: np.ndarray,
         summary=summary
     )
 
-    return reconstruct_tf(flat_theta, summary)
+    # Cast to float32
+    flat_theta = flat_theta.astype(np.float32)
+
+    # Return as tf spec
+    return build_spec(reconstruct_tf(flat_theta, summary))
+
+
+def predict(spec: PPPMOGPSpec, X: np.ndarray,
+            X_thin: Optional[np.ndarray] = None):
+
+    # TODO: Fix up the types
+    env_means, env_vars = project_to_x(
+        spec.cov_mogp_spec, X.astype(np.float32))
+
+    if X_thin is not None:
+
+        thin_means, thin_vars = project_to_x(spec.thin_mogp_spec, X_thin)
+
+        env_means += thin_means
+        env_vars += thin_vars
+
+    return env_means, env_vars
