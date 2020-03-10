@@ -10,14 +10,15 @@ from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
 import tensorflow_probability as tfp
 import os
 from ml_tools.utils import create_path_with_variables
-from ml_tools.minibatching import optimise_minibatching
+from ml_tools.minibatching import (
+    optimise_minibatching, save_theta_and_grad_callback, loss_log_callback)
 from svgp.tf.experimental.linear_mogp import (
     LinearMOGPSpec, calculate_kl, project_selected_to_x, project_to_x)
 from svgp.tf.experimental.multi_inducing_point_gp import \
     MultiInducingPointGPSpecification, initialise_using_kernel_funs
 from typing import Optional
 from ml_tools.adam import adam_step, initialise_state
-from typing import NamedTuple, Tuple
+from typing import NamedTuple, Tuple, Any
 import dill
 
 
@@ -238,13 +239,13 @@ def fit(X: np.ndarray,
         sp_num: np.ndarray,
         n_inducing: int,
         n_latent: int,
+        log_folder: str,
         use_berman_turner: bool = True,
         X_thin: Optional[np.ndarray] = None,
         n_thin_inducing: Optional[int] = None,
         learning_rate: float = 0.01,
         steps: int = 100000,
         batch_size: int = 50000,
-        log_folder: Optional[str] = None,
         save_opt_state: bool = False,
         save_every: Optional[int] = 1000):
 
@@ -263,14 +264,12 @@ def fit(X: np.ndarray,
 
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
-    if log_folder is not None:
+    log_folder = os.path.join(
+        log_folder, create_path_with_variables(
+            lr=learning_rate, batch_size=batch_size,
+            steps=steps))
 
-        log_folder = os.path.join(
-            log_folder, create_path_with_variables(
-                lr=learning_rate, batch_size=batch_size,
-                steps=steps))
-
-        os.makedirs(log_folder, exist_ok=True)
+    os.makedirs(log_folder, exist_ok=True)
 
     opt_step_fun = partial(adam_step, step_size_fun=lambda t: learning_rate)
     opt_state = initialise_state(flat_theta.shape[0])
@@ -282,28 +281,35 @@ def fit(X: np.ndarray,
 
     full_data = {'X': X, 'sp_num': sp_num, 'z': z, 'weights': weights}
 
-    log_file = (os.path.join(log_folder, 'losses.txt')
-                if log_folder is not None
-                else None)
+    log_file = os.path.join(log_folder, 'losses.txt')
 
     if X_thin is not None:
         full_data['X_thin'] = X_thin
     else:
         to_optimise = partial(to_optimise, X_thin=None)
 
+    loss_log_file = open(log_file, 'w')
+
+    def opt_callback(step: int, loss: float, theta: np.ndarray,
+                     grad: np.ndarray, opt_state: Any):
+
+        # Save theta and the gradients
+        save_theta_and_grad_callback(step, loss, theta, grad, opt_state,
+                                     log_folder, summary, save_every)
+
+        # Log the loss
+        loss_log_callback(step, loss, theta, grad, opt_state, loss_log_file)
+
     flat_theta, loss_log, _ = optimise_minibatching(
         full_data,
         to_optimise,
         opt_step_fun,
+        opt_state,
         flat_theta,
         batch_size,
         steps,
         X.shape[0],
-        log_file=log_file,
-        opt_state=opt_state,
-        save_opt_state=save_opt_state,
-        save_every=save_every,
-        summary=summary
+        callback=opt_callback
     )
 
     # Cast to float32
@@ -332,8 +338,6 @@ def predict(spec: PPPMOGPSpec, X: np.ndarray,
 
 
 # TODO: Add predict_selected.
-
-
 def save_results(spec: PPPMOGPSpec, target_file: str):
 
     with open(target_file, 'wb') as f:
