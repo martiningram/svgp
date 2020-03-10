@@ -6,7 +6,8 @@ import tensorflow as tf
 from svgp.tf.quadrature import expectation
 from ml_tools.gp import find_starting_z
 from ml_tools.tf_kernels import matern_kernel_32
-from ml_tools.flattening import flatten_and_summarise_tf, reconstruct_tf
+from ml_tools.flattening import (
+    flatten_and_summarise_tf, reconstruct_tf, reconstruct_np)
 import tensorflow_probability as tfp
 import os
 from ml_tools.utils import create_path_with_variables
@@ -18,7 +19,7 @@ from svgp.tf.experimental.multi_inducing_point_gp import \
     MultiInducingPointGPSpecification, initialise_using_kernel_funs
 from typing import Optional
 from ml_tools.adam import adam_step, initialise_state
-from typing import NamedTuple, Tuple, Any
+from typing import NamedTuple, Tuple, Any, Dict
 import dill
 
 
