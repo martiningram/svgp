@@ -63,7 +63,10 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
     return lik_scale_factor * lik - kl
 
 
-def build_spec(theta, n_latent, is_thinned=False):
+def build_spec(theta):
+
+    n_latent = theta['Zs'].shape[0]
+    is_thinned = 'thin_lscales' in theta
 
     kernel_funs = get_kernel_funs(theta['lscales'], tf.tile([1.], (n_latent,)))
 
@@ -140,7 +143,7 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
 
         theta = reconstruct_tf(flat_theta, summary)
 
-        spec = build_spec(theta, n_latent, is_thinned=X_thin is not None)
+        spec = build_spec(theta)
 
         # Fix prior mean and var to start with
         obj = -calculate_objective(
@@ -315,8 +318,7 @@ def fit(X: np.ndarray,
     # Cast to float32
     flat_theta = flat_theta.astype(np.float32)
 
-    # Return as tf spec
-    return build_spec(reconstruct_tf(flat_theta, summary))
+    return reconstruct_np(flat_theta, summary)
 
 
 def predict(spec: PPPMOGPSpec, X: np.ndarray,
@@ -338,7 +340,13 @@ def predict(spec: PPPMOGPSpec, X: np.ndarray,
 
 
 # TODO: Add predict_selected.
-def save_results(spec: PPPMOGPSpec, target_file: str):
+def save_results(theta: Dict[str, np.ndarray], target_file: str):
 
-    with open(target_file, 'wb') as f:
-        dill.dump(spec, f)
+    np.savez(target_file, **theta)
+
+
+def load_spec_from_array(saved_array: str) -> PPPMOGPSpec:
+
+    loaded = np.load(saved_array)
+    spec = build_spec(loaded)
+    return spec
