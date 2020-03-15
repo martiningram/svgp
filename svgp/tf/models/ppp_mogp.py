@@ -20,7 +20,6 @@ from svgp.tf.experimental.multi_inducing_point_gp import \
 from typing import Optional
 from ml_tools.adam import adam_step, initialise_state
 from typing import NamedTuple, Tuple, Any, Dict
-import dill
 
 
 class PPPMOGPSpec(NamedTuple):
@@ -122,7 +121,11 @@ def build_spec(theta):
 
 
 def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
-                       n_latent, n_data, use_berman_turner):
+                       n_latent, n_data, use_berman_turner, thin_Zs=None):
+
+    # Note: if thin_Zs is passed, we are not optimising their locations.
+    # This is not the cleanest way of doing it, but it's the best I can think
+    # of for now.
 
     flat_theta = tf.constant(flat_theta.astype(np.float32))
 
@@ -143,6 +146,9 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
         tape.watch(flat_theta)
 
         theta = reconstruct_tf(flat_theta, summary)
+
+        if thin_Zs is not None:
+            theta['thin_Zs'] = thin_Zs
 
         spec = build_spec(theta)
 
@@ -251,12 +257,15 @@ def fit(X: np.ndarray,
         steps: int = 100000,
         batch_size: int = 50000,
         save_opt_state: bool = False,
-        save_every: Optional[int] = 1000):
+        save_every: Optional[int] = 1000,
+        fix_thin_inducing: bool = False):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
     n_out = len(np.unique(sp_num))
 
+    # TODO: Is this really the best strategy for finding Z? Do we not want
+    # to find them on the quadrature points?
     Z = find_starting_z(X[z > 0], n_inducing)
 
     if X_thin is not None:
@@ -265,6 +274,10 @@ def fit(X: np.ndarray,
         Z_thin = None
 
     start_theta = initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=Z_thin)
+
+    if fix_thin_inducing:
+        # Remove them from the theta dict of parameters to optimise
+        start_theta = {x: y for x, y in start_theta if x != 'thin_Zs'}
 
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
@@ -282,6 +295,11 @@ def fit(X: np.ndarray,
 
     to_optimise = partial(objective_and_grad, n_data=n_data, n_latent=n_latent,
                           summary=summary, use_berman_turner=use_berman_turner)
+
+    if fix_thin_inducing:
+
+        to_optimise = partial(to_optimise,
+                              thin_Zs=tf.constant(Z_thin.astype(np.float32)))
 
     full_data = {'X': X, 'sp_num': sp_num, 'z': z, 'weights': weights}
 
