@@ -264,12 +264,12 @@ def fit(X: np.ndarray,
     n_data = X.shape[0]
     n_out = len(np.unique(sp_num))
 
-    # TODO: Is this really the best strategy for finding Z? Do we not want
-    # to find them on the quadrature points?
-    Z = find_starting_z(X[z > 0], n_inducing)
+    Z = find_starting_z(X[(z == 0) & (sp_num == np.unique(sp_num)[0])],
+                        n_inducing)
 
     if X_thin is not None:
-        Z_thin = find_starting_z(X_thin[z > 0], n_thin_inducing)
+        Z_thin = find_starting_z(X_thin[
+            (z == 0) & (sp_num == np.unique(sp_num)[0])], n_thin_inducing)
     else:
         Z_thin = None
 
