@@ -118,10 +118,12 @@ def fit(X: np.ndarray,
     n_out = y.shape[1]
 
     # Set initial values
-    start_lengthscales = np.random.uniform(2., 4., size=(n_latent, n_cov))
+    start_lengthscales = np.random.uniform(
+        2., 4., size=(n_latent, n_cov)).astype(np.float32)
 
     Z = find_starting_z(X, n_inducing)
     Z = np.tile(Z, (n_latent, 1, 1))
+    Z = Z.astype(np.float32)
 
     start_kernel_funs = get_kernel_funs(kernel_fun, start_lengthscales)
 
@@ -152,6 +154,9 @@ def fit(X: np.ndarray,
         'lscales': np.sqrt(start_lengthscales),
         'Z': Z,
     }
+
+    # Make same type
+    init_theta = {x: y.astype(np.float32) for x, y in init_theta.items()}
 
     flat_theta, summary = flatten_and_summarise_tf(**init_theta)
 

@@ -372,6 +372,25 @@ def predict(spec: PPPMOGPSpec, X: np.ndarray,
     return env_means.numpy(), env_vars.numpy()
 
 
+def predict_selected(
+        spec: PPPMOGPSpec, X: np.ndarray, sp_nums: np.ndarray,
+        X_thin: Optional[np.ndarray] = None) -> \
+        Tuple[np.ndarray, np.ndarray]:
+
+    env_means, env_vars = project_selected_to_x(
+        spec.cov_mogp_spec, X.astype(np.float32), sp_nums)
+
+    if X_thin is not None:
+
+        thin_means, thin_vars = project_selected_to_x(
+            spec.thin_mogp_spec, X_thin, sp_nums)
+
+        env_means += thin_means
+        env_vars += thin_vars
+
+    return env_means.numpy(), env_vars.numpy()
+
+
 # TODO: Add predict_selected.
 def save_results(theta: Dict[str, np.ndarray], target_file: str):
 
