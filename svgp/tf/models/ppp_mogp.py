@@ -68,7 +68,8 @@ def build_spec(theta):
     n_latent = theta['Zs'].shape[0]
     is_thinned = 'thin_lscales' in theta
 
-    kernel_funs = get_kernel_funs(theta['lscales'], tf.tile([1.], (n_latent,)))
+    kernel_funs = get_kernel_funs(theta['lscales'], 
+                                  tf.tile([0.], (n_latent,)))
 
     # Build the environment GP
     gp_spec = MultiInducingPointGPSpecification(
@@ -94,7 +95,7 @@ def build_spec(theta):
     if is_thinned:
 
         k_funs_thin = get_kernel_funs(
-            theta['thin_lscales'], tf.tile([1.], (1,)))
+            theta['thin_lscales'], tf.tile([0.], (1,)))
 
         # Build and add the thinning GP
         thin_gp_spec = MultiInducingPointGPSpecification(
@@ -277,7 +278,7 @@ def fit(X: np.ndarray,
 
     if fix_thin_inducing:
         # Remove them from the theta dict of parameters to optimise
-        start_theta = {x: y for x, y in start_theta if x != 'thin_Zs'}
+        start_theta = {x: y for x, y in start_theta.items() if x != 'thin_Zs'}
 
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
@@ -298,8 +299,9 @@ def fit(X: np.ndarray,
 
     if fix_thin_inducing:
 
-        to_optimise = partial(to_optimise,
-                              thin_Zs=tf.constant(Z_thin.astype(np.float32)))
+        to_optimise = partial(
+            to_optimise, thin_Zs=tf.constant(
+                np.expand_dims(Z_thin.astype(np.float32), axis=0)))
 
     full_data = {'X': X, 'sp_num': sp_num, 'z': z, 'weights': weights}
 
@@ -312,12 +314,19 @@ def fit(X: np.ndarray,
 
     loss_log_file = open(log_file, 'w')
 
+    additional_vars = {}
+
+    if fix_thin_inducing:
+        # Store thin Zs for callback to save
+        additional_vars['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
+
     def opt_callback(step: int, loss: float, theta: np.ndarray,
                      grad: np.ndarray, opt_state: Any):
 
         # Save theta and the gradients
         save_theta_and_grad_callback(step, loss, theta, grad, opt_state,
-                                     log_folder, summary, save_every)
+                                     log_folder, summary, save_every,
+                                     additional_vars=additional_vars)
 
         # Log the loss
         loss_log_callback(step, loss, theta, grad, opt_state, loss_log_file)
@@ -337,7 +346,12 @@ def fit(X: np.ndarray,
     # Cast to float32
     flat_theta = flat_theta.astype(np.float32)
 
-    return reconstruct_np(flat_theta, summary)
+    final_theta = reconstruct_np(flat_theta, summary)
+
+    if fix_thin_inducing:
+        final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
+
+    return final_theta
 
 
 def predict(spec: PPPMOGPSpec, X: np.ndarray,
