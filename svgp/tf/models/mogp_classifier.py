@@ -106,7 +106,8 @@ def fit(X: np.ndarray,
         # Normal priors
         w_mean_prior: Tuple[float, float] = (0, 1),
         bias_mean_prior: Tuple[float, float] = (0, 1),
-        random_seed: int = 2) \
+        random_seed: int = 2,
+        test_run: bool = False) \
         -> MOGPResult:
 
     np.random.seed(random_seed)
@@ -228,8 +229,13 @@ def fit(X: np.ndarray,
         return (objective.numpy().astype(np.float64),
                 grad.numpy().astype(np.float64))
 
+    if test_run:
+        additional_args = {'tol': 1}
+    else:
+        additional_args = {}
+
     result = minimize(to_minimize_with_grad, flat_theta, jac=True,
-                      method='L-BFGS-B')
+                      method='L-BFGS-B', **additional_args)
 
     final_theta = reconstruct_tf(result.x, summary)
     final_theta = {x: y.numpy() for x, y in final_theta.items()}
