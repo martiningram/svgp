@@ -68,7 +68,7 @@ def build_spec(theta):
     n_latent = theta['Zs'].shape[0]
     is_thinned = 'thin_lscales' in theta
 
-    kernel_funs = get_kernel_funs(theta['lscales'], 
+    kernel_funs = get_kernel_funs(theta['lscales'],
                                   tf.tile([0.], (n_latent,)))
 
     # Build the environment GP
@@ -269,6 +269,8 @@ def fit(X: np.ndarray,
                         n_inducing)
 
     if X_thin is not None:
+        # Make sure we were given how many thinning inducing to use
+        assert n_thin_inducing is not None
         Z_thin = find_starting_z(X_thin[
             (z == 0) & (sp_num == np.unique(sp_num)[0])], n_thin_inducing)
     else:
