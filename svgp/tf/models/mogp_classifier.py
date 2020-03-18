@@ -304,6 +304,9 @@ def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
 def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
 
+    # Cast
+    X_new = X_new.astype(np.float32)
+
     m_proj, var_proj = predict_latent(fit_result, X_new)
 
     # Draw samples from these
