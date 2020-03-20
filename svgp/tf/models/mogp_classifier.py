@@ -39,8 +39,6 @@ def get_kernel_funs(base_kern_fun, lscales):
 
     n_l = len(lscales)
 
-    print(n_l)
-
     kerns = [partial(base_kern_fun, lengthscales=cur_lscales,
                      alpha=np.sqrt(1 / n_l)) for cur_lscales in
              lscales]
