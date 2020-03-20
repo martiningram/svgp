@@ -68,7 +68,7 @@ def build_spec(theta):
     n_latent = theta['Zs'].shape[0]
     is_thinned = 'thin_lscales' in theta
 
-    kernel_funs = get_kernel_funs(theta['lscales'], 
+    kernel_funs = get_kernel_funs(theta['lscales'],
                                   tf.tile([0.], (n_latent,)))
 
     # Build the environment GP
@@ -171,6 +171,16 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
                     tf.exp(theta['thin_lscales'])))
 
         grad = tape.gradient(obj, flat_theta)
+
+    if np.any(np.isnan(grad.numpy())):
+        # Save the current state for investigation
+        np.savez('theta_bug', **{x: y.numpy() for x, y in theta.items()})
+        np.savez('data_bug', **{
+            'X': X.numpy(), 'X_thin': X_thin.numpy(), 'sp_num': sp_num,
+            'z': z.numpy(), 'weights': weights.numpy(), 'n_latent': n_latent,
+            'n_data': n_data, 'use_berman_turner': use_berman_turner,
+            'thin_Zs': thin_Zs.numpy()})
+        exit()
 
     return obj.numpy().astype(np.float64), grad.numpy().astype(np.float64)
 
