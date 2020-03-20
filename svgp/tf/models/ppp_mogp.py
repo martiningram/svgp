@@ -279,6 +279,8 @@ def fit(X: np.ndarray,
                         n_inducing)
 
     if X_thin is not None:
+        # Make sure we were given how many thinning inducing to use
+        assert n_thin_inducing is not None
         Z_thin = find_starting_z(X_thin[
             (z == 0) & (sp_num == np.unique(sp_num)[0])], n_thin_inducing)
     else:
