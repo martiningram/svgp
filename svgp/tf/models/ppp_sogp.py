@@ -241,7 +241,8 @@ def to_optimise(flat_theta, X, z, weights, use_berman_turner, summary,
 def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
         thinning_indices: Optional[np.ndarray] = np.array([]),
         fit_inducing_using_presences_only: bool = False, verbose: bool = True,
-        log_theta_dir: Optional[str] = None, use_berman_turner: bool = False):
+        log_theta_dir: Optional[str] = None, use_berman_turner: bool = True,
+        test_run: bool = False):
 
     global STEP
     STEP = 0
@@ -271,8 +272,12 @@ def fit(X: np.ndarray, z: np.ndarray, weights: np.ndarray, n_inducing: int,
                       log_theta_dir=log_theta_dir, verbose=verbose,
                       likelihood_scale_factor=1.)
 
-    result = minimize(opt_fun, flat_theta.numpy().astype(np.float64),
-                      method='L-BFGS-B', jac=True)
+    if test_run:
+        result = minimize(opt_fun, flat_theta.numpy().astype(np.float64),
+                          method='L-BFGS-B', jac=True, tol=1)
+    else:
+        result = minimize(opt_fun, flat_theta.numpy().astype(np.float64),
+                          method='L-BFGS-B', jac=True)
 
     final_flat_theta = result.x.astype(np.float32)
     final_theta = reconstruct_tf(final_flat_theta, summary)
