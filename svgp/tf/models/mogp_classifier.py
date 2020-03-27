@@ -37,8 +37,10 @@ class MOGPResult(NamedTuple):
 
 def get_kernel_funs(base_kern_fun, lscales):
 
+    n_l = len(lscales)
+
     kerns = [partial(base_kern_fun, lengthscales=cur_lscales,
-                     alpha=np.sqrt(0.6)) for cur_lscales in
+                     alpha=np.sqrt(1 / n_l)) for cur_lscales in
              lscales]
 
     return kerns
