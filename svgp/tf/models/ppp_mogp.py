@@ -1,6 +1,7 @@
 import numpy as np
-from svgp.tf.likelihoods import (
-    ppm_likelihood_quadrature_approx, ppm_likelihood_berman_turner)
+from svgp.tf.likelihoods import ppm_likelihood_quadrature_approx
+from svgp.tf.analytic_expectations import \
+    ppm_likelihood_berman_turner_expectation
 from functools import partial
 import tensorflow as tf
 from svgp.tf.quadrature import expectation
@@ -41,11 +42,6 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
 
     res_means, res_vars = project_selected_to_x(mogp_spec, X, sp_num)
 
-    if use_berman_turner:
-        likelihood = partial(ppm_likelihood_berman_turner, weights=weights)
-    else:
-        likelihood = partial(ppm_likelihood_quadrature_approx, weights=weights)
-
     kl = calculate_kl(mogp_spec)
 
     if thinning_mogp_spec is not None:
@@ -58,7 +54,12 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
         res_means += thin_means
         res_vars += thin_vars
 
-    lik = expectation(z, res_vars, res_means, likelihood)
+    if use_berman_turner:
+        lik = tf.reduce_sum(ppm_likelihood_berman_turner_expectation(
+            res_means, res_vars, z, weights))
+    else:
+        likelihood = partial(ppm_likelihood_quadrature_approx, weights=weights)
+        lik = expectation(z, res_vars, res_means, likelihood)
 
     return lik_scale_factor * lik - kl
 

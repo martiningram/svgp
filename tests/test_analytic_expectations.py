@@ -14,8 +14,8 @@ def test_analytic_berman_against_quadrature():
     mu_i = 0.5
     sigma_sq_i = 0.25
 
-    analytic = ppm_likelihood_berman_turner_expectation(mu_i, sigma_sq_i, z_i,
-                                                        w_i)
+    analytic = ppm_likelihood_berman_turner_expectation(
+        mu_i, sigma_sq_i, z_i, w_i)
 
     lik = partial(ppm_likelihood_berman_turner, weights=w_i)
 

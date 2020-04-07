@@ -22,9 +22,12 @@ def expectation(ys, vars, means, log_y_f, sum_result=True):
         vars: Marginal variances, of shape(n,).
         means: Marginal means, of shape (n,).
         log_y_f: The log likelihood of y given f (a function).
+        sum_result: If true, returns the sum of the individual expectations.
+            Otherwise, one per data point.
 
     Returns:
-        The expected log likelihood for each of the yn.
+        If sum_result=True, the summed result of computing each expected log
+        likelihood; otherwise, [n,] of them, one for each data point.
     """
 
     x_to_eval = transform_x(

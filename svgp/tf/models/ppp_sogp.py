@@ -9,9 +9,10 @@ from functools import partial
 import numpy as np
 import tensorflow as tf
 from ml_tools.gp import find_starting_z
-from svgp.tf.likelihoods import \
-    ppm_likelihood_quadrature_approx, ppm_likelihood_berman_turner
+from svgp.tf.likelihoods import ppm_likelihood_quadrature_approx
 from svgp.tf.quadrature import expectation
+from svgp.tf.analytic_expectations import \
+    ppm_likelihood_berman_turner_expectation
 from ml_tools.flattening import (flatten_and_summarise_tf, reconstruct_tf,
                                  reconstruct_np)
 from scipy.optimize import minimize
@@ -153,13 +154,13 @@ def calculate_objective(X: tf.Tensor, z: tf.Tensor, weights: tf.Tensor,
     proj_mean, proj_var = project_to_x(gp_spec, X)
 
     if use_berman_turner:
-        curried_lik_fun = partial(ppm_likelihood_berman_turner,
-                                  weights=weights)
+        expected_lik = tf.reduce_sum(ppm_likelihood_berman_turner_expectation(
+            proj_mean, proj_var, z, weights))
     else:
         curried_lik_fun = partial(ppm_likelihood_quadrature_approx,
                                   weights=weights)
+        expected_lik = expectation(z, proj_var, proj_mean, curried_lik_fun)
 
-    expected_lik = expectation(z, proj_var, proj_mean, curried_lik_fun)
     kl = calculate_kl(gp_spec)
 
     return likelihood_scale_factor * expected_lik - kl
@@ -329,10 +330,10 @@ def fit_minibatching(X: np.ndarray,
 
     if sqrt_decay_learning_rate:
         # Decay with sqrt of time
-        step_size_fun = lambda t: learning_rate * (1 / np.sqrt(t))
+        step_size_fun = lambda t: learning_rate * (1 / np.sqrt(t))  # NOQA
     else:
         # Constant learning rate
-        step_size_fun = lambda t: learning_rate
+        step_size_fun = lambda t: learning_rate  # NOQA
 
     opt_fun = partial(to_optimise, use_berman_turner=use_berman_turner,
                       summary=summary, init_kernel_spec=init_kernel_spec,
