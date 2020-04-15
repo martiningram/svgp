@@ -33,14 +33,15 @@ class MOGPResult(NamedTuple):
     w_prior_vars: np.ndarray
     intercept_prior_mean: np.float64
     intercept_prior_var: np.float64
+    total_kernel_variance: np.float64
 
 
-def get_kernel_funs(base_kern_fun, lscales):
+def get_kernel_funs(base_kern_fun, lscales, total_variance=6.):
 
     n_l = len(lscales)
 
     kerns = [partial(base_kern_fun, lengthscales=cur_lscales,
-                     alpha=np.sqrt(1 / n_l)) for cur_lscales in
+                     alpha=np.sqrt(total_variance / n_l)) for cur_lscales in
              lscales]
 
     return kerns
@@ -109,7 +110,8 @@ def fit(X: np.ndarray,
         w_mean_prior: Tuple[float, float] = (0, 1),
         bias_mean_prior: Tuple[float, float] = (0, 1),
         random_seed: int = 2,
-        test_run: bool = False) \
+        test_run: bool = False,
+        total_kernel_variance=6.) \
         -> MOGPResult:
 
     np.random.seed(random_seed)
@@ -128,7 +130,8 @@ def fit(X: np.ndarray,
     Z = np.tile(Z, (n_latent, 1, 1))
     Z = Z.astype(np.float32)
 
-    start_kernel_funs = get_kernel_funs(kernel_fun, start_lengthscales)
+    start_kernel_funs = get_kernel_funs(kernel_fun, start_lengthscales,
+                                        total_variance=total_kernel_variance)
 
     init_Ls = np.stack([
         get_initial_values_from_kernel(cur_z, cur_kernel_fun)
@@ -201,7 +204,8 @@ def fit(X: np.ndarray,
 
             Ls = create_ls(theta['L_elts'], n_inducing, n_latent)
 
-            kern_funs = get_kernel_funs(kernel_fun, lscales)
+            kern_funs = get_kernel_funs(kernel_fun, lscales,
+                                        total_variance=total_kernel_variance)
 
             kl = compute_kl_term(theta['mu'], Ls, kern_funs, theta['Z'],
                                  theta['w_means'], w_vars,
@@ -256,7 +260,8 @@ def fit(X: np.ndarray,
         w_prior_means=final_theta['w_prior_mean'],
         w_prior_vars=final_theta['w_prior_var']**2,
         intercept_prior_mean=final_theta['intercept_prior_mean'],
-        intercept_prior_var=final_theta['intercept_prior_var']**2
+        intercept_prior_var=final_theta['intercept_prior_var']**2,
+        total_kernel_variance=total_kernel_variance
     )
 
     return fit_result
@@ -275,7 +280,8 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
     base_kern = kern_lookup[fit_result.kernel]
 
     k_funs = get_kernel_funs(base_kern,
-                             fit_result.lengthscales.astype(np.float32))
+                             fit_result.lengthscales.astype(np.float32),
+                             total_variance=fit_result.total_kernel_variance)
 
     pred_mean, pred_var = compute_predictions(
         X_new.astype(np.float32), fit_result.Z.astype(np.float32),
@@ -297,7 +303,8 @@ def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
     base_kern = kern_lookup[fit_result.kernel]
 
     k_funs = get_kernel_funs(base_kern,
-                             fit_result.lengthscales.astype(np.float32))
+                             fit_result.lengthscales.astype(np.float32),
+                             total_variance=fit_result.total_kernel_variance)
 
     L = create_ls(fit_result.L_elts.astype(np.float32), n_inducing,
                   n_latent)

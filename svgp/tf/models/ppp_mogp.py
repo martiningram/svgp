@@ -215,11 +215,11 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
 
 
 def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
-                     alpha=1.):
+                     log_cov_alpha=1., log_thin_alpha=1.):
 
     start_lscales = np.log(np.random.uniform(
         1., 4., size=(n_latent, n_cov)).astype(np.float32))
-    start_alphas = np.log(np.repeat(alpha, n_latent).astype(np.float32))
+    start_alphas = np.repeat(log_cov_alpha, n_latent).astype(np.float32)
 
     start_k_funs = get_kernel_funs(start_lscales, start_alphas)
 
@@ -253,7 +253,7 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
         # Only one shared function for now
         Z_thins = np.tile(Z_thin, (1, 1, 1))
         thin_lscales = np.log(np.random.uniform(2, 5, size=(1, n_cov_thin)))
-        thin_alphas = np.log(np.array([1.]))
+        thin_alphas = np.array([log_thin_alpha])
 
         start_k_funs = get_kernel_funs(
             thin_lscales.astype(np.float32), thin_alphas.astype(np.float32))
@@ -316,7 +316,11 @@ def fit(X: np.ndarray,
     else:
         Z_thin = None
 
-    start_theta = initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=Z_thin)
+    cov_alpha = cov_alpha if cov_alpha is not None else tf.cast(tf.constant(
+        np.log(np.sqrt(2. / n_latent))), tf.float32)
+
+    start_theta = initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=Z_thin,
+                                   log_cov_alpha=cov_alpha)
 
     if fix_thin_inducing:
         # Remove them from the theta dict of parameters to optimise
@@ -335,9 +339,6 @@ def fit(X: np.ndarray,
     opt_state = initialise_state(flat_theta.shape[0])
 
     flat_theta = flat_theta.numpy()
-
-    cov_alpha = cov_alpha if cov_alpha is not None else tf.cast(tf.constant(
-        np.sqrt(2. / n_latent)), tf.float32)
 
     to_optimise = partial(objective_and_grad, n_data=n_data, n_latent=n_latent,
                           summary=summary, use_berman_turner=use_berman_turner,
