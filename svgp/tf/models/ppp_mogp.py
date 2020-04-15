@@ -366,6 +366,8 @@ def fit(X: np.ndarray,
         # Store thin Zs for callback to save
         additional_vars['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
 
+    additional_vars['cov_alpha'] = cov_alpha
+
     def opt_callback(step: int, loss: float, theta: np.ndarray,
                      grad: np.ndarray, opt_state: Any):
 
