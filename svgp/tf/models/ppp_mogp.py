@@ -69,8 +69,8 @@ def build_spec(theta):
     n_latent = theta['Zs'].shape[0]
     is_thinned = 'thin_lscales' in theta
 
-    kernel_funs = get_kernel_funs(theta['lscales'],
-                                  tf.tile([0.], (n_latent,)))
+    kernel_funs = get_kernel_funs(
+        theta['lscales'], tf.tile([theta['cov_alpha']], (n_latent,)))
 
     # Build the environment GP
     gp_spec = MultiInducingPointGPSpecification(
@@ -123,8 +123,10 @@ def build_spec(theta):
 
 
 def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
-                       n_latent, n_data, use_berman_turner, thin_Zs=None):
+                       n_latent, n_data, use_berman_turner, cov_alpha,
+                       thin_Zs=None):
 
+    # TODO: Make priors configurable; add docstrings.
     # Note: if thin_Zs is passed, we are not optimising their locations.
     # This is not the cleanest way of doing it, but it's the best I can think
     # of for now.
@@ -152,6 +154,9 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
         if thin_Zs is not None:
             theta['thin_Zs'] = thin_Zs
 
+        # This is fixed during optimisation, so we're setting it here
+        theta['cov_alpha'] = cov_alpha
+
         spec = build_spec(theta)
 
         # Fix prior mean and var to start with
@@ -166,10 +171,33 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
                 tfp.distributions.Gamma(3, 1/3).log_prob(
                     tf.exp(theta['lscales'])))
 
+        # TODO: Make these configurable
+        # Add prior on prior w means and variances
+        obj = obj - tf.reduce_sum(
+            tfp.distributions.Normal(0., 1.).log_prob(
+                theta['w_prior_mean']))
+        obj = obj - tf.reduce_sum(
+            tfp.distributions.Gamma(0.5, 0.5).log_prob(
+                tf.exp(theta['w_prior_var'])))
+
+        # Add prior on intercept mean and variance
+        obj = obj - tf.reduce_sum(
+            tfp.distributions.Normal(0., 1.).log_prob(
+                theta['intercept_prior_mean']))
+        obj = obj - tf.reduce_sum(
+            tfp.distributions.Gamma(0.5, 0.5).log_prob(
+                tf.exp(theta['intercept_prior_var'])))
+
         if X_thin is not None:
             obj = obj - tf.reduce_sum(
                 tfp.distributions.Gamma(3, 1/3).log_prob(
                     tf.exp(theta['thin_lscales'])))
+            obj = obj - tf.reduce_sum(
+                tfp.distributions.Normal(0., 1.).log_prob(
+                    theta['thin_w_prior_mean']))
+            obj = obj - tf.reduce_sum(
+                tfp.distributions.Gamma(0.5, 0.5).log_prob(
+                    tf.exp(theta['thin_w_prior_var'])))
 
         grad = tape.gradient(obj, flat_theta)
 
@@ -270,7 +298,8 @@ def fit(X: np.ndarray,
         batch_size: int = 50000,
         save_opt_state: bool = False,
         save_every: Optional[int] = 1000,
-        fix_thin_inducing: bool = False):
+        fix_thin_inducing: bool = False,
+        cov_alpha: Optional[float] = None):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
@@ -307,8 +336,12 @@ def fit(X: np.ndarray,
 
     flat_theta = flat_theta.numpy()
 
+    cov_alpha = cov_alpha if cov_alpha is not None else tf.cast(tf.constant(
+        np.sqrt(2. / n_latent)), tf.float32)
+
     to_optimise = partial(objective_and_grad, n_data=n_data, n_latent=n_latent,
-                          summary=summary, use_berman_turner=use_berman_turner)
+                          summary=summary, use_berman_turner=use_berman_turner,
+                          cov_alpha=cov_alpha)
 
     if fix_thin_inducing:
 
@@ -363,6 +396,8 @@ def fit(X: np.ndarray,
 
     if fix_thin_inducing:
         final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
+
+    final_theta['cov_alpha'] = cov_alpha
 
     return final_theta
 
