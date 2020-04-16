@@ -70,7 +70,7 @@ def build_spec(theta):
     is_thinned = 'thin_lscales' in theta
 
     kernel_funs = get_kernel_funs(
-        theta['lscales'], tf.tile([theta['cov_alpha']], (n_latent,)))
+        theta['lscales'], tf.tile([theta['log_cov_alpha']], (n_latent,)))
 
     # Build the environment GP
     gp_spec = MultiInducingPointGPSpecification(
@@ -96,7 +96,7 @@ def build_spec(theta):
     if is_thinned:
 
         k_funs_thin = get_kernel_funs(
-            theta['thin_lscales'], tf.tile([0.], (1,)))
+            theta['thin_lscales'], tf.tile([theta['log_thin_alpha']], (1,)))
 
         # Build and add the thinning GP
         thin_gp_spec = MultiInducingPointGPSpecification(
@@ -123,8 +123,8 @@ def build_spec(theta):
 
 
 def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
-                       n_latent, n_data, use_berman_turner, cov_alpha,
-                       thin_Zs=None):
+                       n_latent, n_data, use_berman_turner, log_cov_alpha,
+                       log_thin_alpha=0., thin_Zs=None):
 
     # TODO: Make priors configurable; add docstrings.
     # Note: if thin_Zs is passed, we are not optimising their locations.
@@ -155,7 +155,8 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
             theta['thin_Zs'] = thin_Zs
 
         # This is fixed during optimisation, so we're setting it here
-        theta['cov_alpha'] = cov_alpha
+        theta['log_cov_alpha'] = log_cov_alpha
+        theta['log_thin_alpha'] = log_thin_alpha
 
         spec = build_spec(theta)
 
@@ -215,7 +216,7 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
 
 
 def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
-                     log_cov_alpha=1., log_thin_alpha=1.):
+                     log_cov_alpha=0., log_thin_alpha=0.):
 
     start_lscales = np.log(np.random.uniform(
         1., 4., size=(n_latent, n_cov)).astype(np.float32))
@@ -228,7 +229,7 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
     start_gp = initialise_using_kernel_funs(start_k_funs, Zs)
 
     w_means = np.random.randn(n_out, n_latent) * 0.01
-    w_vars = np.log(init_w_var * np.ones_like(w_means) / n_latent)
+    w_vars = np.log(init_w_var * np.ones_like(w_means))
 
     start_theta = {
         'Zs': start_gp.Zs,
@@ -241,9 +242,9 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
         'intercept_vars': np.log(np.ones(n_out)),
         'intercept_prior_var': np.log(np.array(1.)),
         'w_prior_var': np.log(
-            np.repeat(init_w_var / n_latent, n_latent).reshape(1, -1)),
+            np.repeat(init_w_var, n_latent).reshape(1, -1)),
         'w_prior_mean': np.repeat(0., n_latent).reshape(1, -1),
-        'intercept_prior_mean': np.array(0.)
+        'intercept_prior_mean': np.array(0.),
     }
 
     if Z_thin is not None:
@@ -253,10 +254,11 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
         # Only one shared function for now
         Z_thins = np.tile(Z_thin, (1, 1, 1))
         thin_lscales = np.log(np.random.uniform(2, 5, size=(1, n_cov_thin)))
-        thin_alphas = np.array([log_thin_alpha])
+        log_thin_alphas = np.array([log_thin_alpha])
 
         start_k_funs = get_kernel_funs(
-            thin_lscales.astype(np.float32), thin_alphas.astype(np.float32))
+            thin_lscales.astype(np.float32),
+            log_thin_alphas.astype(np.float32))
 
         start_gp_thin = initialise_using_kernel_funs(
             start_k_funs, Z_thins.astype(np.float32))
@@ -267,7 +269,6 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
         start_theta.update({
             'thin_Zs': Z_thins,
             'thin_lscales': thin_lscales,
-            'thin_alphas': thin_alphas,
             'thin_L_elts': start_gp_thin.L_elts,
             'thin_mus': start_gp_thin.mus,
             'thin_w_means': w_thin_means,
@@ -299,7 +300,8 @@ def fit(X: np.ndarray,
         save_opt_state: bool = False,
         save_every: Optional[int] = 1000,
         fix_thin_inducing: bool = False,
-        cov_alpha: Optional[float] = None):
+        cov_alpha: Optional[float] = None,
+        thin_alpha: Optional[float] = 1.):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
@@ -316,11 +318,13 @@ def fit(X: np.ndarray,
     else:
         Z_thin = None
 
-    cov_alpha = cov_alpha if cov_alpha is not None else tf.cast(tf.constant(
-        np.log(np.sqrt(2. / n_latent))), tf.float32)
+    log_cov_alpha = np.log(cov_alpha) if cov_alpha is not None else tf.cast(
+        tf.constant(np.log(np.sqrt(2. / n_latent))), tf.float32)
+    log_thin_alpha = np.log(thin_alpha)
 
     start_theta = initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=Z_thin,
-                                   log_cov_alpha=cov_alpha)
+                                   log_cov_alpha=log_cov_alpha,
+                                   log_thin_alpha=log_thin_alpha)
 
     if fix_thin_inducing:
         # Remove them from the theta dict of parameters to optimise
@@ -342,7 +346,7 @@ def fit(X: np.ndarray,
 
     to_optimise = partial(objective_and_grad, n_data=n_data, n_latent=n_latent,
                           summary=summary, use_berman_turner=use_berman_turner,
-                          cov_alpha=cov_alpha)
+                          log_cov_alpha=log_cov_alpha)
 
     if fix_thin_inducing:
 
@@ -367,7 +371,8 @@ def fit(X: np.ndarray,
         # Store thin Zs for callback to save
         additional_vars['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
 
-    additional_vars['cov_alpha'] = cov_alpha
+    additional_vars['log_cov_alpha'] = log_cov_alpha
+    additional_vars['log_thin_alpha'] = log_thin_alpha
 
     def opt_callback(step: int, loss: float, theta: np.ndarray,
                      grad: np.ndarray, opt_state: Any):
@@ -400,7 +405,7 @@ def fit(X: np.ndarray,
     if fix_thin_inducing:
         final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
 
-    final_theta['cov_alpha'] = cov_alpha
+    final_theta['log_cov_alpha'] = log_cov_alpha
 
     return final_theta
 
