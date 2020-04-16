@@ -6,7 +6,6 @@ from svgp.tf.experimental.linear_mogp import calculate_kl
 
 def test_init_consistent():
 
-    n = 100
     n_cov = 8
     n_inducing = 10
     n_latent = 4
