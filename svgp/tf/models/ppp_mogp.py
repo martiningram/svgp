@@ -406,6 +406,7 @@ def fit(X: np.ndarray,
         final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
 
     final_theta['log_cov_alpha'] = log_cov_alpha
+    final_theta['log_thin_alpha'] = log_thin_alpha
 
     return final_theta
 
