@@ -55,8 +55,8 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
         res_vars += thin_vars
 
     if use_berman_turner:
-        lik = tf.reduce_sum(ppm_likelihood_berman_turner_expectation(
-            res_means, res_vars, z, weights))
+        lik = ppm_likelihood_berman_turner_expectation(
+            res_means, res_vars, z, weights, sum_result=True)
     else:
         likelihood = partial(ppm_likelihood_quadrature_approx, weights=weights)
         lik = expectation(z, res_vars, res_means, likelihood)
