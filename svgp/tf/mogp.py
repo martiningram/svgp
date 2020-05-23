@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from svgp.tf.quadrature import expectation
-from svgp.tf.svgp import compute_qf_mean_cov, compute_kl_term, project_to_f
+from svgp.tf.svgp import compute_kl_term, project_to_f
 from svgp.tf.kl import normal_kl_1d
 from .config import DTYPE
 from functools import partial
@@ -75,7 +75,7 @@ def project_latents(x, Z, ms, Ls, ks):
 def map_projections(kmm, knm, knn, ms, Ls):
 
     projection_fun = partial(project_to_f, diag_only=True)
-    projection_fun_split = lambda x: projection_fun(*x)
+    projection_fun_split = lambda x: projection_fun(*x)  # NOQA
 
     m_proj, var_proj = tf.map_fn(projection_fun_split, [kmm, knm, knn, ms, Ls],
                                  dtype=(DTYPE, DTYPE))

@@ -6,7 +6,7 @@ from functools import partial
 import tensorflow as tf
 from svgp.tf.quadrature import expectation
 from ml_tools.gp import find_starting_z
-from ml_tools.tf_kernels import matern_kernel_32
+from ml_tools.tf_kernels import additive_rbf_kernel
 from ml_tools.flattening import (
     flatten_and_summarise_tf, reconstruct_tf, reconstruct_np)
 import tensorflow_probability as tfp
@@ -31,7 +31,7 @@ class PPPMOGPSpec(NamedTuple):
 
 def get_kernel_funs(lengthscales, alphas):
 
-    return [partial(matern_kernel_32, lengthscales=tf.exp(cur_lscales),
+    return [partial(additive_rbf_kernel, lengthscales=tf.exp(cur_lscales),
                     alpha=tf.exp(cur_alpha)) for cur_lscales, cur_alpha in
             zip(lengthscales, alphas)]
 
