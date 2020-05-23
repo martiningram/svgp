@@ -1,7 +1,9 @@
 import tensorflow as tf
 
 
-def ppm_likelihood_berman_turner_expectation(f_mu, f_var, z, w):
+@tf.function
+def ppm_likelihood_berman_turner_expectation(f_mu, f_var, z, w,
+                                             sum_result=False):
     """
     This computes the expectation of the Berman-Turner device approximation to
     the inhomogeneous Poisson point process log likelihood, assuming that the
@@ -18,4 +20,9 @@ def ppm_likelihood_berman_turner_expectation(f_mu, f_var, z, w):
         The expected log likelihood for each input point.
     """
 
-    return w * (z * f_mu - tf.exp(f_mu + f_var / 2))
+    result = w * (z * f_mu - tf.exp(f_mu + f_var / 2))
+
+    if sum_result:
+        return tf.reduce_sum(result)
+    else:
+        return result

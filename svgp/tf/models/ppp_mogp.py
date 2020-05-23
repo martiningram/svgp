@@ -55,8 +55,8 @@ def calculate_objective(mogp_spec, X, sp_num, z, weights, lik_scale_factor,
         res_vars += thin_vars
 
     if use_berman_turner:
-        lik = tf.reduce_sum(ppm_likelihood_berman_turner_expectation(
-            res_means, res_vars, z, weights))
+        lik = ppm_likelihood_berman_turner_expectation(
+            res_means, res_vars, z, weights, sum_result=True)
     else:
         likelihood = partial(ppm_likelihood_quadrature_approx, weights=weights)
         lik = expectation(z, res_vars, res_means, likelihood)
@@ -406,6 +406,7 @@ def fit(X: np.ndarray,
         final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
 
     final_theta['log_cov_alpha'] = log_cov_alpha
+    final_theta['log_thin_alpha'] = log_thin_alpha
 
     return final_theta
 
