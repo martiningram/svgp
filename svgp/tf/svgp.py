@@ -6,6 +6,7 @@ from .config import DTYPE, JITTER
 from ml_tools.tensorflow import solve_via_cholesky
 
 
+@tf.function
 def project_to_f(kmm, knm, knn, m, L, diag_only=True):
     """
     Projects the GP on the inducing point values u to the GP on the function
