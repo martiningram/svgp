@@ -28,6 +28,52 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=True):
 
     m = tf.reshape(m, (-1, 1))
 
+    mean = knm @ tf.linalg.solve(kmm, m)
+
+    S = tf.matmul(L, tf.transpose(L)) + \
+        tf.eye(int(L.shape[0]), dtype=DTYPE) * JITTER
+
+    A_t = tf.linalg.solve(kmm, tf.transpose(knm))
+
+    brackets = S - kmm
+
+    if diag_only:
+
+        # Trick to compute the diagonal only of the matrix product
+        cov = knn + tf.einsum('ik,kl,li->i', tf.transpose(A_t),
+                              brackets, A_t)
+
+    else:
+
+        cov = knn + tf.matmul(tf.transpose(A_t),
+                              tf.matmul(brackets, A_t))
+
+    return tf.squeeze(mean), cov
+
+
+def project_to_f_cholesky(kmm, knm, knn, m, L, diag_only=True):
+    """
+    THIS IS DEPRECATED FOR SOMETIMES PREDICTING NEGATIVE VARIANCES
+    Projects the GP on the inducing point values u to the GP on the function
+    values f.
+
+    Args:
+        kmm: The kernel function evaluated on the inducing point locations.
+        knm: The kernel function evaluated on the data locations and the
+            inducing point locations.
+        knn: The kernel function evaluated on the data locations.
+        m: The means of the GP at the inducing point locations.
+        L: The Cholesky factor of the GP at the inducing point locations.
+        diag_only: If True, returns only the diagonal covariance. If True,
+            it also expects knn to be diagonal.
+
+    Returns:
+        The mean and covariance [diagonal only if diag_only] at the data
+        points, as a tuple.
+    """
+
+    m = tf.reshape(m, (-1, 1))
+
     kmm_chol = tf.linalg.cholesky(kmm)
 
     mean = tf.matmul(knm, solve_via_cholesky(kmm_chol, m))
