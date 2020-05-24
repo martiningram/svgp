@@ -7,8 +7,10 @@ from ml_tools.tensorflow import solve_via_cholesky
 
 
 @tf.function
-def project_to_f(kmm, knm, knn, m, L, diag_only=True):
+def project_to_f_solve(kmm, knm, knn, m, L, diag_only=True):
     """
+    TODO: This is preferable to the current version in terms of numerical
+    stability, but _much_ slower. To be improved.
     Projects the GP on the inducing point values u to the GP on the function
     values f.
 
@@ -52,9 +54,8 @@ def project_to_f(kmm, knm, knn, m, L, diag_only=True):
     return tf.squeeze(mean), cov
 
 
-def project_to_f_cholesky(kmm, knm, knn, m, L, diag_only=True):
+def project_to_f(kmm, knm, knn, m, L, diag_only=True):
     """
-    THIS IS DEPRECATED FOR SOMETIMES PREDICTING NEGATIVE VARIANCES
     Projects the GP on the inducing point values u to the GP on the function
     values f.
 
