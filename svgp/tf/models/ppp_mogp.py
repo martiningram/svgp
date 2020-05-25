@@ -124,7 +124,7 @@ def build_spec(theta):
 
 def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
                        n_latent, n_data, use_berman_turner, log_cov_alpha,
-                       log_thin_alpha=0., thin_Zs=None):
+                       log_thin_alpha=0., thin_Zs=None, w_prior_mean=None):
 
     # TODO: Make priors configurable; add docstrings.
     # Note: if thin_Zs is passed, we are not optimising their locations.
@@ -157,6 +157,9 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
         # This is fixed during optimisation, so we're setting it here
         theta['log_cov_alpha'] = log_cov_alpha
         theta['log_thin_alpha'] = log_thin_alpha
+
+        if w_prior_mean is not None:
+            theta['w_prior_mean'] = w_prior_mean
 
         spec = build_spec(theta)
 
@@ -301,7 +304,8 @@ def fit(X: np.ndarray,
         save_every: Optional[int] = 1000,
         fix_thin_inducing: bool = False,
         cov_alpha: Optional[float] = None,
-        thin_alpha: Optional[float] = 1.):
+        thin_alpha: Optional[float] = 1.,
+        fix_zero_w_prior_mean: bool = True):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
@@ -330,6 +334,11 @@ def fit(X: np.ndarray,
         # Remove them from the theta dict of parameters to optimise
         start_theta = {x: y for x, y in start_theta.items() if x != 'thin_Zs'}
 
+    if fix_zero_w_prior_mean:
+        # Remove them from the theta dict of parameters to optimise
+        start_theta = {x: y for x, y in start_theta.items() if x !=
+                       'w_prior_mean'}
+
     flat_theta, summary = flatten_and_summarise_tf(**start_theta)
 
     log_folder = os.path.join(
@@ -354,6 +363,10 @@ def fit(X: np.ndarray,
             to_optimise, thin_Zs=tf.constant(
                 np.expand_dims(Z_thin.astype(np.float32), axis=0)))
 
+    if fix_zero_w_prior_mean:
+        to_optimise = partial(
+            to_optimise, w_prior_mean=tf.zeros((1, n_latent)))
+
     full_data = {'X': X, 'sp_num': sp_num, 'z': z, 'weights': weights}
 
     log_file = os.path.join(log_folder, 'losses.txt')
@@ -370,6 +383,9 @@ def fit(X: np.ndarray,
     if fix_thin_inducing:
         # Store thin Zs for callback to save
         additional_vars['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
+
+    if fix_zero_w_prior_mean:
+        additional_vars['w_prior_mean'] = np.zeros((1, n_latent))
 
     additional_vars['log_cov_alpha'] = log_cov_alpha
     additional_vars['log_thin_alpha'] = log_thin_alpha
@@ -404,6 +420,9 @@ def fit(X: np.ndarray,
 
     if fix_thin_inducing:
         final_theta['thin_Zs'] = np.expand_dims(Z_thin, axis=0)
+
+    if fix_zero_w_prior_mean:
+        final_theta['w_prior_mean'] = np.zeros((1, n_latent))
 
     final_theta['log_cov_alpha'] = log_cov_alpha
     final_theta['log_thin_alpha'] = log_thin_alpha
