@@ -220,7 +220,7 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
 
 def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
                      log_cov_alpha=0., log_thin_alpha=0.,
-                     separate_w_variances=True):
+                     separate_w_prior_vars=True):
 
     start_lscales = np.log(np.random.uniform(
         1., 4., size=(n_latent, n_cov)).astype(np.float32))
@@ -235,7 +235,7 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
     w_means = np.random.randn(n_out, n_latent) * 0.01
     w_vars = np.log(init_w_var * np.ones_like(w_means))
 
-    n_w_prior_means = n_out if separate_w_variances else 1
+    n_w_prior_means = n_out if separate_w_prior_vars else 1
 
     start_theta = {
         'Zs': start_gp.Zs,
@@ -309,7 +309,7 @@ def fit(X: np.ndarray,
         cov_alpha: Optional[float] = None,
         thin_alpha: Optional[float] = 1.,
         fix_zero_w_prior_mean: bool = True,
-        separate_w_variances: bool = True):
+        separate_w_prior_vars: bool = True):
 
     n_cov = X.shape[1]
     n_data = X.shape[0]
@@ -333,7 +333,7 @@ def fit(X: np.ndarray,
     start_theta = initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=Z_thin,
                                    log_cov_alpha=log_cov_alpha,
                                    log_thin_alpha=log_thin_alpha,
-                                   separate_w_variances=separate_w_variances)
+                                   separate_w_prior_vars=separate_w_prior_vars)
 
     if fix_thin_inducing:
         # Remove them from the theta dict of parameters to optimise
@@ -368,7 +368,7 @@ def fit(X: np.ndarray,
             to_optimise, thin_Zs=tf.constant(
                 np.expand_dims(Z_thin.astype(np.float32), axis=0)))
 
-    n_w_means = n_out if separate_w_variances else 1
+    n_w_means = n_out if separate_w_prior_vars else 1
 
     if fix_zero_w_prior_mean:
         to_optimise = partial(
