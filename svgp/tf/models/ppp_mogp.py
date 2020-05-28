@@ -93,9 +93,6 @@ def build_spec(theta):
         intercept_prior_var=tf.exp(theta['intercept_prior_var'])
     )
 
-    print(theta['intercept_prior_mean'])
-    print(tf.exp(theta['intercept_prior_var']))
-
     if is_thinned:
 
         k_funs_thin = get_kernel_funs(
