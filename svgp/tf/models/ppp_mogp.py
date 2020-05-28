@@ -158,6 +158,11 @@ def objective_and_grad(flat_theta, X, X_thin, sp_num, z, weights, summary,
         theta['log_cov_alpha'] = log_cov_alpha
         theta['log_thin_alpha'] = log_thin_alpha
 
+        # Also fix the intercept; give it only a very weak prior.
+        # TODO: Maybe make this configurable
+        theta['intercept_prior_var'] = tf.constant(5.)
+        theta['intercept_prior_mean'] = tf.constant(0.)
+
         if w_prior_mean is not None:
             theta['w_prior_mean'] = w_prior_mean
 
@@ -246,11 +251,11 @@ def initialise_theta(Z, n_latent, n_cov, n_out, Z_thin=None, init_w_var=1.,
         'mus': start_gp.mus,
         'intercept_means': np.zeros(n_out),
         'intercept_vars': np.log(np.ones(n_out)),
-        'intercept_prior_var': np.log(np.array(1.)),
+        #'intercept_prior_var': np.log(np.array(1.)),
         'w_prior_var': np.log(np.tile(init_w_var, (n_w_prior_means,
                                                    n_latent))),
         'w_prior_mean': np.tile(0., (n_w_prior_means, n_latent)),
-        'intercept_prior_mean': np.array(0.),
+        #'intercept_prior_mean': np.array(0.),
     }
 
     if Z_thin is not None:
