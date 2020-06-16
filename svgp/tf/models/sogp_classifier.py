@@ -66,17 +66,18 @@ def fit(X: np.ndarray,
     n_cov = X.shape[1]
 
     # Set initial values
-    start_alpha = np.array(1.)
-    start_lengthscales = np.random.uniform(2., 4., size=n_cov)
-    start_bias_sd = np.array(1.)
+    start_alpha = np.array(1., dtype=np.float32)
+    start_lengthscales = np.random.uniform(2., 4., size=n_cov).astype(
+        np.float32)
+    start_bias_sd = np.array(1., dtype=np.float32)
 
-    Z = find_starting_z(X, n_inducing)
+    Z = find_starting_z(X, n_inducing).astype(np.float32)
 
     start_kernel_fun = get_kernel_fun(
         kernel_fun, start_alpha, start_lengthscales, start_bias_sd)
 
     init_L = get_initial_values_from_kernel(Z, start_kernel_fun)
-    init_mu = np.zeros(n_inducing)
+    init_mu = np.zeros(n_inducing, dtype=np.float32)
 
     init_theta = {
         'L_elts': init_L,

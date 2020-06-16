@@ -36,3 +36,18 @@ def mvn_kl_alt(mu_1, cov_1, mu_2, cov_2):
     mean_term = (mu_2 - mu_1) @ (jnp.linalg.solve(cov_2, (mu_2 - mu_1)))
 
     return 0.5 * (logdet_term + tr_term + mean_term)
+
+
+@jit
+def normal_kl_1d(mu1, var1, mu2, var2):
+
+    sd1 = jnp.sqrt(var1)
+    sd2 = jnp.sqrt(var2)
+
+    log_term = jnp.log(sd2) - jnp.log(sd1)
+    main_term = (var1 + (mu1 - mu2)**2) / (2 * var2)
+
+    # TODO: TF had a constant term here, but I'm dropping it. It shouldn't
+    # matter for optimisation unless I'm missing something
+
+    return log_term + main_term
