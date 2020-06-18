@@ -136,7 +136,8 @@ def fit(X: np.ndarray,
                       method='L-BFGS-B')
 
     final_theta = reconstruct_tf(result.x, summary)
-    final_theta = {x: y.numpy() for x, y in final_theta.items()}
+    final_theta = {x: y.numpy().astype(np.float32) for x, y in
+                   final_theta.items()}
 
     # Build the results
     fit_result = SOGPResult(
@@ -160,10 +161,10 @@ def predict(fit_result: SOGPResult, X_new: np.ndarray):
 
     base_kern = kern_lookup[fit_result.kernel]
 
-    k_fun = get_kernel_fun(base_kern,
-                           fit_result.alpha.astype(np.float32),
-                           fit_result.lengthscales.astype(np.float32),
-                           fit_result.bias_sd.astype(np.float32))
+    k_fun = get_kernel_fun(
+        base_kern, tf.constant(fit_result.alpha.astype(np.float32)),
+        tf.constant(fit_result.lengthscales.astype(np.float32)),
+        tf.constant(fit_result.bias_sd.astype(np.float32)))
 
     pred_mean, pred_var = compute_qf_mean_cov(
         L, fit_result.mu.astype(np.float32), X_new.astype(np.float32),
