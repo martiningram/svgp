@@ -111,7 +111,8 @@ def fit(X: np.ndarray,
         bias_mean_prior: Tuple[float, float] = (0, 1),
         random_seed: int = 2,
         test_run: bool = False,
-        total_kernel_variance=6.) \
+        total_kernel_variance=6.,
+        verbose=False) \
         -> MOGPResult:
 
     np.random.seed(random_seed)
@@ -196,11 +197,12 @@ def fit(X: np.ndarray,
                         theta['intercept_prior_var']**2,
                         theta['w_vars']**2)
 
-            print(lscales)
-            print(intercept_prior_var)
-            print(w_prior_var)
-            print(theta['w_prior_mean'])
-            print(theta['intercept_prior_mean'])
+            if verbose:
+                print(lscales)
+                print(intercept_prior_var)
+                print(w_prior_var)
+                print(theta['w_prior_mean'])
+                print(theta['intercept_prior_mean'])
 
             Ls = create_ls(theta['L_elts'], n_inducing, n_latent)
 
