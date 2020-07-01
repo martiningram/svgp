@@ -3,7 +3,8 @@ import jax.numpy as jnp
 from jax import jit
 
 
-x_quad, w_quad = onp.polynomial.hermite.hermgauss(100)
+x_quad, w_quad = onp.polynomial.hermite.hermgauss(25)
+x_quad, w_quad = jnp.array(x_quad), jnp.array(w_quad)
 
 
 @jit

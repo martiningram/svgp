@@ -313,7 +313,7 @@ def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
     # Project the latents
     m_proj, var_proj = project_latents(
-        X_new, fit_result.Z.astype(np.float32),
+        X_new.astype(np.float32), fit_result.Z.astype(np.float32),
         fit_result.mu.astype(np.float32), L, k_funs)
 
     return m_proj, var_proj
