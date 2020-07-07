@@ -26,3 +26,14 @@ def ppm_likelihood_berman_turner_expectation(f_mu, f_var, z, w,
         return tf.reduce_sum(result)
     else:
         return result
+
+
+@tf.function
+def expected_ppm_likelihood_quadrature_approx(y, weights, f_mean, f_var):
+
+    presence_contrib = f_mean
+    quad_contrib = weights * tf.exp(f_mean + f_var / 2)
+
+    results = tf.where(y == 1, presence_contrib, -quad_contrib)
+
+    return results
