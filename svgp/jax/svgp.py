@@ -1,102 +1,51 @@
 import jax.numpy as jnp
-from jax.ops.scatter import index_update
-import numpy as onp
-
-from .quadrature import expectation
-from .kl import mvn_kl
 from jax import jit
+from functools import partial
+from jax.scipy.linalg import cho_factor, cho_solve
+from ml_tools.jax import pos_def_mat_from_tri_elts, diag_elts_of_triple_matmul
 
 
-@jit
-def project_to_f(kmm, knm, knn, m, L):
+def _evaluate_kernels(X, Z, kernel_fn, diag_only=False):
 
-    mean = knm @ jnp.linalg.solve(kmm, m)
-
-    S = L @ L.T
-
-    V1 = jnp.linalg.solve(kmm, S - kmm)
-    V2 = jnp.linalg.solve(kmm, knm.T)
-
-    cov = knn + knm @ V1 @ V2
-
-    return mean, cov
-
-
-def compute_qf_mean_cov(L, m, X, Z, kernel_fn):
-
-    knm = kernel_fn(X, Z)
+    knn = kernel_fn(X, X, diag_only=diag_only)
     kmm = kernel_fn(Z, Z)
-    knn = kernel_fn(X, X)
+    knm = kernel_fn(X, Z)
 
-    mean, cov = project_to_f(kmm, knm, knn, m, L)
-
-    return mean, cov
+    return knn, kmm, knm
 
 
-def compute_expected_log_lik(mean, cov, y_batch, log_lik_fn):
+@partial(jit, static_argnums=(5))
+def _project_to_f_given_kernels(knn, kmm, knm, m, S, diag_only):
 
-    individual_expectations = expectation(
-        y_batch, jnp.diag(cov), mean, log_lik_fn)
+    kmm_chol, lower = cho_factor(kmm)
 
-    return jnp.sum(individual_expectations)
+    pred_mean = knm @ cho_solve((kmm_chol, lower), m)
 
+    D = cho_solve((kmm_chol, lower), S) - jnp.eye(m.shape[0])
+    B = (cho_solve((kmm_chol, lower), D.T)).T
 
-def compute_kl_term(m, L, Z, kern_fn):
+    if diag_only:
 
-    # For the log lik, we need q(u) and p(u).
-    p_u_mean = jnp.zeros_like(m)
-    p_u_cov = kern_fn(Z, Z)
-    q_u_cov = L @ L.T
-    q_u_mean = m
+        cov = knn + diag_elts_of_triple_matmul(knm, B, knm.T)
 
-    kl = mvn_kl(q_u_mean, q_u_cov, p_u_mean, p_u_cov)
+    else:
 
-    return kl
+        cov = knn + knm @ B @ knm.T
 
-
-def compute_objective(x, y, m, L, Z, log_lik_fn, kern_fn):
-
-    mean, cov = compute_qf_mean_cov(L, m, x, Z, kern_fn)
-
-    expected_log_lik = compute_expected_log_lik(
-        mean, cov, y, log_lik_fn)
-
-    kl_term = compute_kl_term(m, L, Z, kern_fn)
-    objective = expected_log_lik - kl_term
-
-    return objective
+    return jnp.squeeze(pred_mean), cov
 
 
-def extract_params(theta, n_inducing, square_kern_params=True):
+def project_to_f(X, Z, m, S, kernel_fn, diag_only=False):
 
-    # Get the parameters
-    m = theta[:n_inducing]
+    knn, kmm, knm = _evaluate_kernels(X, Z, kernel_fn, diag_only)
 
-    L = jnp.zeros((n_inducing, n_inducing))
-    indices = jnp.tril_indices(L.shape[0])
-    num_indices = indices[0].shape[0]
+    pred_mean, pred_cov = _project_to_f_given_kernels(knn, kmm, knm, m, S, diag_only)
 
-    L_elts = theta[n_inducing:n_inducing+num_indices]
-    L = index_update(L, indices, L_elts)
-
-    kern_params = theta[n_inducing+num_indices:]
-
-    if square_kern_params:
-        kern_params = kern_params**2
-
-    return m, L, kern_params
+    return pred_mean, pred_cov
 
 
-def get_starting_m_and_l(n_inducing):
+def project_to_f_given_L_elts(X, Z, m, L_elts, kernel_fn, diag_only=False):
 
-    m = onp.random.randn(n_inducing)
-    L = jnp.zeros((n_inducing, n_inducing))
+    S = pos_def_mat_from_tri_elts(L_elts, Z.shape[0])
 
-    indices = jnp.tril_indices(L.shape[0])
-    num_indices = indices[0].shape[0]
-
-    random_vals = onp.random.randn(num_indices)
-
-    L = index_update(L, indices, random_vals)
-
-    return m, L
+    return project_to_f(X, Z, m, S, kernel_fn, diag_only)

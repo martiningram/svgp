@@ -1,15 +1,29 @@
 import jax.numpy as jnp
 import numpy as np
 from ml_tools.constrain import apply_transformation
-from svgp.jax.analytic_expectations import ppm_likelihood_berman_turner_expectation
+from svgp.jax.analytic_expectations import expected_ppm_likelihood_quadrature_approx
+from svgp.jax.quadrature import expectation
+from svgp.jax.likelihoods import square_cox_lik
 from svgp.jax.kl import normal_kl_1d
 from ml_tools.flattening import flatten_and_summarise, reconstruct
 from jax import value_and_grad, jit
 from scipy.optimize import minimize
+from functools import partial
+from jax.scipy.stats import gamma, norm
 
 
+@partial(jit, static_argnums=(8, 9))
 def calculate_likelihood(
-    theta, fg_ids, fg_covs, bg_covs, fg_covs_thin, bg_covs_thin, total_area, n_s
+    theta,
+    fg_ids,
+    fg_covs,
+    bg_covs,
+    fg_covs_thin,
+    bg_covs_thin,
+    quad_weights,
+    counts,
+    n_s,
+    n_fg,
 ):
 
     # Project
@@ -38,27 +52,28 @@ def calculate_likelihood(
     pred_mean_bg = pred_mean_bg + bg_covs_thin @ theta["w_means_thin"]
     pred_vars_bg = pred_vars_bg + bg_covs_thin ** 2 @ theta["w_vars_thin"]
 
-    # Berman-Turner weights
-    n_bg = bg_covs.shape[0]
-    n_fg = fg_covs.shape[0]
-    weight = total_area / n_bg
+    quad_weights_bg = jnp.tile(quad_weights, (n_s, 1)).T
+    ys_bg = jnp.zeros_like(quad_weights_bg)
 
-    z_fg = jnp.repeat(1.0 / weight, n_fg)
-    z_bg = jnp.repeat(0.0, n_bg * n_s)
+    n_fg = pred_mean_fg.shape[0]
 
-    fg_result = ppm_likelihood_berman_turner_expectation(
-        pred_mean_fg, pred_vars_fg, z_fg, weight, sum_result=True
+    ys_full = jnp.concatenate([counts, ys_bg.reshape(-1)])
+    weights_full = jnp.concatenate([jnp.repeat(-1, n_fg), quad_weights_bg.reshape(-1)])
+    pred_mean_full = jnp.concatenate([pred_mean_fg, pred_mean_bg.reshape(-1)])
+    pred_var_full = jnp.concatenate([pred_vars_fg, pred_vars_bg.reshape(-1)])
+
+    liks = expected_ppm_likelihood_quadrature_approx(
+        ys_full, weights_full, pred_mean_full, pred_var_full
     )
 
-    bg_result = ppm_likelihood_berman_turner_expectation(
-        pred_mean_bg.reshape(-1),
-        pred_vars_bg.reshape(-1),
-        z_bg,
-        weight,
-        sum_result=True,
-    )
+    # liks = expectation(
+    #     ys_full,
+    #     pred_var_full,
+    #     pred_mean_full,
+    #     partial(square_cox_lik, weights=weights_full),
+    # )
 
-    return fg_result + bg_result
+    return jnp.sum(liks)
 
 
 def calculate_kl(theta):
@@ -68,37 +83,50 @@ def calculate_kl(theta):
     )
 
     kl_intercept = normal_kl_1d(
-        theta["intercept_means"],
-        theta["intercept_vars"],
-        theta["intercept_prior_mean"],
-        theta["intercept_prior_var"],
+        theta["intercept_means"], theta["intercept_vars"], -2.0, 1.0
     )
 
-    kl_thin = normal_kl_1d(theta["w_means_thin"], theta["w_vars_thin"], 0.0, 1.0)
+    kl_thin = normal_kl_1d(
+        theta["w_means_thin"], theta["w_vars_thin"], 0.0, theta["w_prior_var_thin"]
+    )
 
     return jnp.sum(kl_weights) + jnp.sum(kl_intercept) + jnp.sum(kl_thin)
 
 
 def fit(
-    fg_covs, bg_covs, species_ids, total_area, fg_covs_thin=None, bg_covs_thin=None
+    fg_covs,
+    bg_covs,
+    species_ids,
+    quad_weights,
+    counts,
+    fg_covs_thin=None,
+    bg_covs_thin=None,
 ):
 
     n_c = fg_covs.shape[1]
     n_s = len(np.unique(species_ids))
     n_c_thin = 0 if fg_covs_thin is None else fg_covs_thin.shape[1]
+    n_fg = fg_covs.shape[0]
+    n_bg = bg_covs.shape[0]
+
+    fg_covs_thin = fg_covs_thin if fg_covs_thin is not None else jnp.zeros((n_fg, 0))
+    bg_covs_thin = bg_covs_thin if bg_covs_thin is not None else jnp.zeros((n_bg, 0))
 
     init_theta = {
         "w_means": jnp.zeros((n_c, n_s)),
-        "log_w_vars": jnp.zeros((n_c, n_s)) - 5,
-        "intercept_means": jnp.zeros(n_s),
-        "log_intercept_vars": jnp.zeros(n_s),
+        "log_w_vars": jnp.log(jnp.tile(1.0 / n_c, (n_c, n_s))) - 5,
+        "intercept_means": jnp.zeros(n_s) - 5,
+        "log_intercept_vars": jnp.zeros(n_s) - 5,
         "w_prior_mean": jnp.zeros((n_c, 1)),
-        "log_w_prior_var": jnp.zeros((n_c, 1)) - 5,
-        "intercept_prior_mean": jnp.array(0.0),
-        "log_intercept_prior_var": jnp.array(0.0),
+        "log_w_prior_var": jnp.log(jnp.tile(1.0 / n_c, (n_c, 1))) - 5,
         # Thinning is assumed constant across species
         "w_means_thin": jnp.zeros((n_c_thin, 1)),
-        "log_w_vars_thin": jnp.zeros((n_c_thin, 1)),
+        "log_w_vars_thin": jnp.zeros((n_c_thin, 1)) - 10
+        if n_c_thin == 0
+        else jnp.log(jnp.tile(1.0 / (n_c_thin), (n_c_thin, 1))) - 10,
+        "log_w_prior_var_thin": jnp.array(0.0)
+        if n_c_thin == 0
+        else jnp.log(1.0 / (n_c_thin)) - 10,
     }
 
     flat_theta, summary = flatten_and_summarise(**init_theta)
@@ -115,16 +143,23 @@ def fit(
             bg_covs,
             fg_covs_thin,
             bg_covs_thin,
-            total_area,
+            quad_weights,
+            counts,
             n_s,
+            n_fg,
         )
         kl = calculate_kl(theta)
 
-        return -(lik - kl)
+        prior = jnp.sum(gamma.logpdf(theta["w_prior_var"], 0.5, scale=1.0 / n_c))
+        prior = prior + jnp.sum(
+            norm.logpdf(theta["w_prior_mean"], 0.0, scale=jnp.sqrt(1.0 / n_c))
+        )
+
+        return -(lik - kl + prior)
 
     with_grad = jit(value_and_grad(to_minimize))
 
-    def annotated_with_grad(flat_theta):
+    def annotated_with_grad(flat_theta, summary):
 
         flat_theta = jnp.array(flat_theta)
 
@@ -132,9 +167,21 @@ def fit(
 
         print(obj, jnp.linalg.norm(grad))
 
+        if jnp.isnan(obj) or jnp.isinf(obj) or jnp.any(jnp.isnan(grad)):
+            import ipdb
+
+            problem = reconstruct(flat_theta, summary, jnp.reshape)
+
+            ipdb.set_trace()
+
         return np.array(obj).astype(np.float64), np.array(grad).astype(np.float64)
 
-    result = minimize(annotated_with_grad, flat_theta, method="L-BFGS-B", jac=True)
+    result = minimize(
+        partial(annotated_with_grad, summary=summary),
+        flat_theta,
+        method="L-BFGS-B",
+        jac=True,
+    )
     final_theta = reconstruct(result.x, summary, jnp.reshape)
     final_theta = apply_transformation(final_theta, "log_", jnp.exp, "")
 

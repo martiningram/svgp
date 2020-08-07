@@ -5,8 +5,8 @@ from jax import jit
 @jit
 def mvn_kl(mu_0, sigma_0, mu_1, sigma_1):
 
-    logdet_sigma_1 = jnp.linalg.slogdet(sigma_1)[1]
-    logdet_sigma_0 = jnp.linalg.slogdet(sigma_0)[1]
+    logdet_sigma_1 = jnp.prod(jnp.linalg.slogdet(sigma_1))
+    logdet_sigma_0 = jnp.prod(jnp.linalg.slogdet(sigma_0))
     term_1 = 0.5 * (logdet_sigma_1 - logdet_sigma_0)
 
     # I wonder if there's a more efficient way?
@@ -45,7 +45,7 @@ def normal_kl_1d(mu1, var1, mu2, var2):
     sd2 = jnp.sqrt(var2)
 
     log_term = jnp.log(sd2) - jnp.log(sd1)
-    main_term = (var1 + (mu1 - mu2)**2) / (2 * var2)
+    main_term = (var1 + (mu1 - mu2) ** 2) / (2 * var2)
 
     # TODO: TF had a constant term here, but I'm dropping it. It shouldn't
     # matter for optimisation unless I'm missing something

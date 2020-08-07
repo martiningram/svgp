@@ -13,7 +13,8 @@ def make_2d_quadrature_grid(x_quad, w_quad):
     return stacked.T, weights
 
 
-x_quad, w_quad = onp.polynomial.hermite.hermgauss(25)
+# TODO: Add config to specify number of quad points
+x_quad, w_quad = onp.polynomial.hermite.hermgauss(15)
 x_quad, w_quad = jnp.array(x_quad), jnp.array(w_quad)
 
 # TODO: Add config to specify number of quad points
@@ -28,6 +29,7 @@ def transform_x(x, sigma, mu):
     return jnp.sqrt(2) * sigma * x + mu
 
 
+@partial(jit, static_argnums=3)
 def expectation(ys, vars, means, log_y_f):
     # Returns the individual expectations for each of the ys.
 
