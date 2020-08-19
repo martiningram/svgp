@@ -15,7 +15,7 @@ class SVGPSpec(NamedTuple):
 
 def calculate_kl(spec: SVGPSpec):
 
-    S = pos_def_mat_from_tri_elts(spec.L_elts, spec.m.shape[0], 1e-6)
+    S = pos_def_mat_from_tri_elts(spec.L_elts, spec.m.shape[0], 1e-5)
     prior_mu = jnp.zeros_like(spec.m)
     prior_cov = spec.kern_fn(spec.Z, spec.Z, diag_only=False)
 
@@ -34,7 +34,7 @@ def project_to_x(spec: SVGPSpec, X: jnp.ndarray, diag_only=True):
 def initialise_using_kernel_fun(kern_fn, Z):
 
     kmm = kern_fn(Z, Z, diag_only=False)
-    L_elts = vector_from_pos_def_mat(kmm, 1e-6)
+    L_elts = vector_from_pos_def_mat(kmm, 1e-5)
     m = jnp.zeros(Z.shape[0])
 
     return SVGPSpec(m, L_elts, Z, kern_fn)

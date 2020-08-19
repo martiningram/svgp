@@ -36,3 +36,9 @@ def expected_ppm_likelihood_quadrature_approx(y, weights, f_mean, f_var):
     results = jnp.where(y > 0.0, y * presence_contrib, -quad_contrib)
 
     return results
+
+
+def expected_likelihood_poisson(k, f_mean, f_var):
+    """Calculates E[f(X)], where X ~ N(f_mean, f_var) and f is the Poisson log pmf."""
+
+    return k * f_mean - jnp.exp(f_mean + f_var / 2)

@@ -15,7 +15,7 @@ def _evaluate_kernels(X, Z, kernel_fn, diag_only=False):
 
 
 @partial(jit, static_argnums=(5))
-def _project_to_f_given_kernels(knn, kmm, knm, m, S, diag_only):
+def _project_to_f_given_kernels_old(knn, kmm, knm, m, S, diag_only):
 
     kmm_chol, lower = cho_factor(kmm)
 
@@ -33,6 +33,28 @@ def _project_to_f_given_kernels(knn, kmm, knm, m, S, diag_only):
         cov = knn + knm @ B @ knm.T
 
     return jnp.squeeze(pred_mean), cov
+
+
+def _project_to_f_given_kernels(knn, kmm, knm, m, S, diag_only=True):
+
+    m = jnp.reshape(m, (-1, 1))
+
+    mean = knm @ jnp.linalg.solve(kmm, m)
+
+    A_t = jnp.linalg.solve(kmm, knm.T)
+
+    brackets = S - kmm
+
+    if diag_only:
+
+        # Trick to compute the diagonal only of the matrix product
+        cov = knn + diag_elts_of_triple_matmul(A_t.T, brackets, A_t)
+
+    else:
+
+        cov = knn + jnp.matmul(A_t.T, jnp.matmul(brackets, A_t))
+
+    return jnp.squeeze(mean), cov
 
 
 def project_to_f(X, Z, m, S, kernel_fn, diag_only=False):
