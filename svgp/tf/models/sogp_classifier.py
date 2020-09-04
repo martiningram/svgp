@@ -17,9 +17,9 @@ from ml_tools.normals import normal_cdf_integral
 
 
 kern_lookup = {
-    'matern_3/2': tfk.matern_kernel_32,
-    'matern_1/2': tfk.matern_kernel_12,
-    'rbf': tfk.ard_rbf_kernel
+    "matern_3/2": tfk.matern_kernel_32,
+    "matern_1/2": tfk.matern_kernel_12,
+    "rbf": tfk.ard_rbf_kernel,
 }
 
 
@@ -37,27 +37,31 @@ class SOGPResult(NamedTuple):
 
 def get_kernel_fun(base_kern_fun, alpha, lscales, bias_sd):
 
-    return (
-        lambda x1, x2, diag_only=False: base_kern_fun(
-            x1, x2, lengthscales=lscales, alpha=alpha, diag_only=diag_only)
-        + tfk.bias_kernel(x1, x2, sd=bias_sd, diag_only=diag_only))
+    return lambda x1, x2, diag_only=False: base_kern_fun(
+        x1, x2, lengthscales=lscales, alpha=alpha, diag_only=diag_only
+    ) + tfk.bias_kernel(x1, x2, sd=bias_sd, diag_only=diag_only)
 
 
-def fit(X: np.ndarray,
-        y: np.ndarray,
-        n_inducing: int = 100,
-        kernel: str = 'matern_3/2',
-        # Gamma priors (note tfp uses "concentration rate" parameterisation):
-        kernel_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
-        kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
-        bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
-        random_seed: int = 2) \
-        -> SOGPResult:
+def fit(
+    X: np.ndarray,
+    y: np.ndarray,
+    n_inducing: int = 100,
+    kernel: str = "matern_3/2",
+    # Gamma priors (note tfp uses "concentration rate" parameterisation):
+    kernel_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+    kernel_lengthscale_prior: Tuple[float, float] = (3, 1 / 3),
+    bias_variance_prior: Tuple[float, float] = (3 / 2, 3 / 2),
+    random_seed: int = 2,
+    verbose: bool = False,
+) -> SOGPResult:
 
     np.random.seed(random_seed)
 
-    assert kernel in ['matern_3/2', 'matern_1/2', 'rbf'], \
-        'Only these three kernels are currently supported!'
+    assert kernel in [
+        "matern_3/2",
+        "matern_1/2",
+        "rbf",
+    ], "Only these three kernels are currently supported!"
 
     # Note that input _must_ be scaled. Some way to enforce that?
 
@@ -66,26 +70,26 @@ def fit(X: np.ndarray,
     n_cov = X.shape[1]
 
     # Set initial values
-    start_alpha = np.array(1., dtype=np.float32)
-    start_lengthscales = np.random.uniform(2., 4., size=n_cov).astype(
-        np.float32)
-    start_bias_sd = np.array(1., dtype=np.float32)
+    start_alpha = np.array(1.0, dtype=np.float32)
+    start_lengthscales = np.random.uniform(2.0, 4.0, size=n_cov).astype(np.float32)
+    start_bias_sd = np.array(1.0, dtype=np.float32)
 
     Z = find_starting_z(X, n_inducing).astype(np.float32)
 
     start_kernel_fun = get_kernel_fun(
-        kernel_fun, start_alpha, start_lengthscales, start_bias_sd)
+        kernel_fun, start_alpha, start_lengthscales, start_bias_sd
+    )
 
     init_L = get_initial_values_from_kernel(Z, start_kernel_fun)
     init_mu = np.zeros(n_inducing, dtype=np.float32)
 
     init_theta = {
-        'L_elts': init_L,
-        'mu': init_mu,
-        'alpha': start_alpha,
-        'lscales': np.sqrt(start_lengthscales),
-        'Z': Z,
-        'bias_sd': start_bias_sd
+        "L_elts": init_L,
+        "mu": init_mu,
+        "alpha": start_alpha,
+        "lscales": np.sqrt(start_lengthscales),
+        "Z": Z,
+        "bias_sd": start_bias_sd,
     }
 
     flat_theta, summary = flatten_and_summarise_tf(**init_theta)
@@ -109,45 +113,47 @@ def fit(X: np.ndarray,
             theta = reconstruct_tf(x_tf, summary)
 
             alpha, lscales, bias_sd = (
-                theta['alpha']**2, theta['lscales']**2, theta['bias_sd']**2)
+                theta["alpha"] ** 2,
+                theta["lscales"] ** 2,
+                theta["bias_sd"] ** 2,
+            )
 
-            L_cov = lo_tri_from_elements(theta['L_elts'], n_inducing)
+            L_cov = lo_tri_from_elements(theta["L_elts"], n_inducing)
 
             kern_fun = get_kernel_fun(kernel_fun, alpha, lscales, bias_sd)
 
             objective = -compute_objective(
-                X, y, theta['mu'], L_cov, theta['Z'], bernoulli_probit_lik,
-                kern_fun)
+                X, y, theta["mu"], L_cov, theta["Z"], bernoulli_probit_lik, kern_fun
+            )
 
             objective = objective - (
                 tf.reduce_sum(lscale_prior.log_prob(lscales))
-                + kernel_var_prior.log_prob(alpha**2)
-                + bias_var_prior.log_prob(bias_sd**2)
+                + kernel_var_prior.log_prob(alpha ** 2)
+                + bias_var_prior.log_prob(bias_sd ** 2)
             )
 
             grad = tape.gradient(objective, x_tf)
 
-        print(objective, np.linalg.norm(grad.numpy()))
+        if verbose:
+            print(objective, np.linalg.norm(grad.numpy()))
 
-        return (objective.numpy().astype(np.float64),
-                grad.numpy().astype(np.float64))
+        return (objective.numpy().astype(np.float64), grad.numpy().astype(np.float64))
 
-    result = minimize(to_minimize_with_grad, flat_theta, jac=True,
-                      method='L-BFGS-B')
+    result = minimize(to_minimize_with_grad, flat_theta, jac=True, method="L-BFGS-B")
 
     final_theta = reconstruct_tf(result.x, summary)
-    final_theta = {x: y.numpy().astype(np.float32) for x, y in
-                   final_theta.items()}
+    final_theta = {x: y.numpy().astype(np.float32) for x, y in final_theta.items()}
 
     # Build the results
     fit_result = SOGPResult(
-        L_elts=final_theta['L_elts'],
-        mu=final_theta['mu'],
+        L_elts=final_theta["L_elts"],
+        mu=final_theta["mu"],
         kernel=kernel,
-        lengthscales=final_theta['lscales']**2,
-        alpha=final_theta['alpha']**2,
-        bias_sd=final_theta['bias_sd']**2,
-        Z=final_theta['Z'])
+        lengthscales=final_theta["lscales"] ** 2,
+        alpha=final_theta["alpha"] ** 2,
+        bias_sd=final_theta["bias_sd"] ** 2,
+        Z=final_theta["Z"],
+    )
 
     return fit_result
 
@@ -162,19 +168,24 @@ def predict(fit_result: SOGPResult, X_new: np.ndarray):
     base_kern = kern_lookup[fit_result.kernel]
 
     k_fun = get_kernel_fun(
-        base_kern, tf.constant(fit_result.alpha.astype(np.float32)),
+        base_kern,
+        tf.constant(fit_result.alpha.astype(np.float32)),
         tf.constant(fit_result.lengthscales.astype(np.float32)),
-        tf.constant(fit_result.bias_sd.astype(np.float32)))
+        tf.constant(fit_result.bias_sd.astype(np.float32)),
+    )
 
     pred_mean, pred_var = compute_qf_mean_cov(
-        L, fit_result.mu.astype(np.float32), X_new.astype(np.float32),
-        fit_result.Z.astype(np.float32), k_fun)
+        L,
+        fit_result.mu.astype(np.float32),
+        X_new.astype(np.float32),
+        fit_result.Z.astype(np.float32),
+        k_fun,
+    )
 
     return pred_mean.numpy(), np.sqrt(pred_var)
 
 
-def predict_probs(fit_result: SOGPResult, X_new: np.ndarray,
-                  log: bool = False):
+def predict_probs(fit_result: SOGPResult, X_new: np.ndarray, log: bool = False):
 
     pred_mean, pred_var = predict(fit_result, X_new)
     pred_sd = np.sqrt(pred_var)
@@ -192,5 +203,5 @@ def load_results(file_to_load: str):
 
     loaded = np.load(file_to_load)
     dict_version = {x: loaded[x] for x in loaded.keys()}
-    dict_version['kernel'] = str(dict_version['kernel'])
+    dict_version["kernel"] = str(dict_version["kernel"])
     return SOGPResult(**dict_version)
