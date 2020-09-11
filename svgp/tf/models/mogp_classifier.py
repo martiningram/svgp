@@ -289,7 +289,8 @@ def fit(
 
             grad = tape.gradient(objective, x_tf)
 
-        print(objective, np.linalg.norm(grad.numpy()))
+        if verbose:
+            print(objective, np.linalg.norm(grad.numpy()))
 
         return (objective.numpy().astype(np.float64), grad.numpy().astype(np.float64))
 
@@ -307,7 +308,7 @@ def fit(
     )
 
     final_theta = reconstruct_tf(result.x, summary)
-    final_theta = {x: y.numpy() for x, y in final_theta.items()}
+    final_theta = {x: tf.cast(y, tf.float32) for x, y in final_theta.items()}
 
     # Build the results
     fit_result = MOGPResult(
@@ -324,7 +325,7 @@ def fit(
         w_prior_vars=final_theta["w_prior_var"] ** 2,
         intercept_prior_mean=final_theta["intercept_prior_mean"],
         intercept_prior_var=final_theta["intercept_prior_var"] ** 2,
-        total_kernel_variance=total_kernel_variance,
+        total_kernel_variance=tf.constant(total_kernel_variance, tf.float32),
     )
 
     return fit_result
@@ -334,29 +335,31 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
     # TODO: Is there something I can do about the casts here?
     # TODO: Should there be an option to predict the latents only?
 
+    X_new = tf.cast(tf.constant(X_new), tf.float32)
+
     n_inducing = fit_result.mu.shape[1]
     n_latent = fit_result.mu.shape[0]
 
-    L = create_ls(fit_result.L_elts.astype(np.float32), n_inducing, n_latent)
+    L = create_ls(fit_result.L_elts, n_inducing, n_latent)
 
     base_kern = kern_lookup[fit_result.kernel]
 
     k_funs = get_kernel_funs(
         base_kern,
-        fit_result.lengthscales.astype(np.float32),
+        fit_result.lengthscales,
         total_variance=fit_result.total_kernel_variance,
     )
 
     pred_mean, pred_var = compute_predictions(
-        X_new.astype(np.float32),
-        fit_result.Z.astype(np.float32),
-        fit_result.mu.astype(np.float32),
+        X_new,
+        fit_result.Z,
+        fit_result.mu,
         L,
         k_funs,
-        fit_result.w_means.astype(np.float32),
-        fit_result.w_vars.astype(np.float32),
-        fit_result.intercept_means.astype(np.float32),
-        fit_result.intercept_vars.astype(np.float32),
+        fit_result.w_means,
+        fit_result.w_vars,
+        fit_result.intercept_means,
+        fit_result.intercept_vars,
     )
 
     return pred_mean.numpy(), np.sqrt(pred_var)
@@ -364,6 +367,8 @@ def predict(fit_result: MOGPResult, X_new: np.ndarray):
 
 def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
+    X_new = tf.cast(tf.constant(X_new), tf.float32)
+
     n_inducing = fit_result.mu.shape[1]
     n_latent = fit_result.mu.shape[0]
 
@@ -371,20 +376,14 @@ def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 
     k_funs = get_kernel_funs(
         base_kern,
-        fit_result.lengthscales.astype(np.float32),
+        fit_result.lengthscales,
         total_variance=fit_result.total_kernel_variance,
     )
 
-    L = create_ls(fit_result.L_elts.astype(np.float32), n_inducing, n_latent)
+    L = create_ls(fit_result.L_elts, n_inducing, n_latent)
 
     # Project the latents
-    m_proj, var_proj = project_latents(
-        X_new.astype(np.float32),
-        fit_result.Z.astype(np.float32),
-        fit_result.mu.astype(np.float32),
-        L,
-        k_funs,
-    )
+    m_proj, var_proj = project_latents(X_new, fit_result.Z, fit_result.mu, L, k_funs,)
 
     return m_proj, var_proj
 
@@ -392,7 +391,7 @@ def predict_latent(fit_result: MOGPResult, X_new: np.ndarray):
 def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
 
     # Cast
-    X_new = X_new.astype(np.float32)
+    X_new = tf.cast(tf.constant(X_new), tf.float32)
 
     m_proj, var_proj = predict_latent(fit_result, X_new)
 
@@ -429,6 +428,8 @@ def predict_f_samples(fit_result: MOGPResult, X_new, n_samples=1000):
 
 
 def predict_probs(fit_result: MOGPResult, X_new: np.ndarray, log: bool = False):
+
+    X_new = tf.cast(tf.constant(X_new), tf.float32)
 
     pred_mean, pred_var = predict(fit_result, X_new)
     pred_sd = np.sqrt(pred_var)
