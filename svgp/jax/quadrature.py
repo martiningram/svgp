@@ -29,15 +29,23 @@ def transform_x(x, sigma, mu):
     return jnp.sqrt(2) * sigma * x + mu
 
 
+@partial(jit, static_argnums=0)
+def expectation_1d(fun, means, vars):
+
+    x_to_eval = transform_x(jnp.reshape(x_quad, (-1, 1)), jnp.sqrt(vars), means)
+
+    multiplied = jnp.reshape(w_quad, (-1, 1)) * fun(x_to_eval)
+
+    return jnp.sum(multiplied, axis=0) / jnp.sqrt(jnp.pi)
+
+
 @partial(jit, static_argnums=3)
 def expectation(ys, vars, means, log_y_f):
     # Returns the individual expectations for each of the ys.
 
-    x_to_eval = transform_x(jnp.reshape(x_quad, (-1, 1)), jnp.sqrt(vars), means)
+    curried_lik = lambda f: log_y_f(ys, f)
 
-    multiplied = jnp.reshape(w_quad, (-1, 1)) * log_y_f(ys, x_to_eval)
-
-    return jnp.sum(multiplied, axis=0) / jnp.sqrt(jnp.pi)
+    return expectation_1d(curried_lik, means, vars)
 
 
 @partial(jit, static_argnums=2)
