@@ -5,8 +5,8 @@ from jax import jit
 @jit
 def mvn_kl(mu_0, sigma_0, mu_1, sigma_1):
 
-    logdet_sigma_1 = jnp.prod(jnp.linalg.slogdet(sigma_1))
-    logdet_sigma_0 = jnp.prod(jnp.linalg.slogdet(sigma_0))
+    logdet_sigma_1 = jnp.prod(jnp.array(jnp.linalg.slogdet(sigma_1)))
+    logdet_sigma_0 = jnp.prod(jnp.array(jnp.linalg.slogdet(sigma_0)))
     term_1 = 0.5 * (logdet_sigma_1 - logdet_sigma_0)
 
     # I wonder if there's a more efficient way?
