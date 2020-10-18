@@ -97,7 +97,6 @@ def fit(
     verbose=False,
     Z=None,
     init_likelihood_params={},
-    likelihood_transformation_fun=no_op_transform,
 ):
     """Fits a single-output GP.
 
