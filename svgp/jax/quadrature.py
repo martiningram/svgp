@@ -34,7 +34,7 @@ def expectation_1d(fun, means, vars):
 
     x_to_eval = transform_x(jnp.reshape(x_quad, (-1, 1)), jnp.sqrt(vars), means)
 
-    multiplied = jnp.reshape(w_quad, (-1, 1)) * fun(x_to_eval)
+    multiplied = jnp.reshape(w_quad, (-1, 1)) * vmap(fun)(x_to_eval)
 
     return jnp.sum(multiplied, axis=0) / jnp.sqrt(jnp.pi)
 

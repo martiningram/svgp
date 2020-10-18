@@ -21,7 +21,7 @@ constrain_positive = partial(
     apply_transformation, search_key="log_", transformation=jnp.exp, replace_with=""
 )
 
-no_op_transfom = lambda params: params
+no_op_transform = lambda params: params
 
 
 def ard_kernel_currier(params, base_kernel=matern_kernel_32):
@@ -97,7 +97,7 @@ def fit(
     verbose=False,
     Z=None,
     init_likelihood_params={},
-    likelihood_transformation_fun=no_op_transfom,
+    likelihood_transformation_fun=no_op_transform,
 ):
 
     if Z is None:
@@ -125,7 +125,7 @@ def fit(
 
         kern_fn = get_kernel_fun(kernel_currier, theta, transformation_fun)
 
-        theta = likelihood_transformation_fun(theta)
+        theta_lik = likelihood_transformation_fun(theta)
 
         spec = sv.SVGPSpec(
             m=theta["mu"], L_elts=theta["L_elts"], Z=theta["Z"], kern_fn=kern_fn
@@ -135,9 +135,9 @@ def fit(
 
         kl = sv.calculate_kl(spec)
 
-        curried_lik_fun = lambda f: likelihood_fun(f, theta)
+        curried_lik_fun = lambda f: likelihood_fun(f, theta_lik)
 
-        lik = jnp.sum(expectation_1d(likelihood_fun, pred_mean, pred_var))
+        lik = jnp.sum(expectation_1d(curried_lik_fun, pred_mean, pred_var))
 
         prior = prior_fun(transformation_fun(theta))
 
@@ -160,7 +160,7 @@ def fit(
         kern_fn=kern,
     )
 
-    return final_spec, transformation_fun(final_theta)
+    return final_spec, likelihood_transformation_fun(transformation_fun(final_theta))
 
 
 def fit_bernoulli_sogp(
