@@ -10,6 +10,7 @@ from ml_tools.jax import convert_decorator
 from jax import jit, value_and_grad
 from svgp.jax.likelihoods import bernoulli_probit_lik
 from scipy.optimize import minimize
+from ml_tools.gp import find_starting_z
 
 
 gamma_default_lscale_prior_fn = lambda params: jnp.sum(
