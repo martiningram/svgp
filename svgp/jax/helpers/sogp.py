@@ -99,6 +99,22 @@ def fit(
     init_likelihood_params={},
     likelihood_transformation_fun=no_op_transform,
 ):
+    """Fits a single-output GP.
+
+    Args:
+    X: The covariates to use.
+    init_kernel_params: The initial parameters for the kernels. This includes
+    lengthscales, marginal variances, and so on.
+    kernel_currier: The kernel_currier to use. This is a function which takes in
+    the [transformed] kernel parameters and returns a kernel function ready to
+    evaluate. See ard_kernel_currier for an example.
+    likelihood_fun: A function taking in the value of the GP and the parameter
+    dict and returning the likelihood.
+    prior_fun: The prior to place on the [transformed] parameters.
+    transformation_fun: The transformation to perform on the parameters. This is
+    usually used to ensure some parameters are positive.
+    ...
+    """
 
     if Z is None:
         Z = find_starting_z(X, n_inducing)
@@ -125,7 +141,7 @@ def fit(
 
         kern_fn = get_kernel_fun(kernel_currier, theta, transformation_fun)
 
-        theta_lik = likelihood_transformation_fun(theta)
+        theta = transformation_fun(theta)
 
         spec = sv.SVGPSpec(
             m=theta["mu"], L_elts=theta["L_elts"], Z=theta["Z"], kern_fn=kern_fn
@@ -139,7 +155,7 @@ def fit(
 
         lik = jnp.sum(expectation_1d(curried_lik_fun, pred_mean, pred_var))
 
-        prior = prior_fun(transformation_fun(theta))
+        prior = prior_fun(theta)
 
         return -(lik - kl + prior)
 
@@ -160,7 +176,7 @@ def fit(
         kern_fn=kern,
     )
 
-    return final_spec, likelihood_transformation_fun(transformation_fun(final_theta))
+    return final_spec, transformation_fun(final_theta)
 
 
 def fit_bernoulli_sogp(
