@@ -21,6 +21,8 @@ constrain_positive = partial(
     apply_transformation, search_key="log_", transformation=jnp.exp, replace_with=""
 )
 
+no_op_transfom = lambda params: params
+
 
 def ard_kernel_currier(params, base_kernel=matern_kernel_32):
     """A kernel getter to be used with get_kernel_fun. Given a parameter_dict
@@ -94,6 +96,8 @@ def fit(
     n_inducing=100,
     verbose=False,
     Z=None,
+    init_likelihood_params={},
+    likelihood_transformation_fun=no_op_transfom,
 ):
 
     if Z is None:
@@ -110,6 +114,7 @@ def fit(
         "L_elts": init_spec.L_elts,
         "Z": jnp.array(Z),
         **init_kernel_params,
+        **init_likelihood_params,
     }
 
     flat_theta, summary = flatten_and_summarise(**theta)
@@ -120,6 +125,8 @@ def fit(
 
         kern_fn = get_kernel_fun(kernel_currier, theta, transformation_fun)
 
+        theta = likelihood_transformation_fun(theta)
+
         spec = sv.SVGPSpec(
             m=theta["mu"], L_elts=theta["L_elts"], Z=theta["Z"], kern_fn=kern_fn
         )
@@ -127,6 +134,8 @@ def fit(
         pred_mean, pred_var = sv.project_to_x(spec, X)
 
         kl = sv.calculate_kl(spec)
+
+        curried_lik_fun = lambda f: likelihood_fun(f, theta)
 
         lik = jnp.sum(expectation_1d(likelihood_fun, pred_mean, pred_var))
 
@@ -166,7 +175,7 @@ def fit_bernoulli_sogp(
     Z=None,
 ):
 
-    likelihood_fun = lambda f: bernoulli_probit_lik(y, f)
+    likelihood_fun = lambda f, theta: bernoulli_probit_lik(y, f)
 
     return fit(
         X,
